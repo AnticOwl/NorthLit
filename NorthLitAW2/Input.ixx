@@ -31,8 +31,11 @@ namespace NorthLit::Input
 	static CameraInputSettings s_Settings;
 	static bool s_PreviousInsertDown = false;
 	static bool s_PreviousLogDown = false;
+	static bool s_PreviousPauseDown = false;
 	static bool s_ToggleCameraRequested = false;
 	static bool s_LogBasisRequested = false;
+	static BYTE** s_PauseStructLocation = nullptr;
+	static bool s_PauseResolveAttempted = false;
 
 	static bool IsForegroundProcess()
 	{
@@ -44,6 +47,68 @@ namespace NorthLit::Input
 	}
 
 	static bool IsKeyDown(int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; }
+
+	static BYTE** FindPauseStructLocation()
+	{
+		HMODULE module = GetModuleHandleW(nullptr);
+		if (!module) return nullptr;
+
+		const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(module);
+		if (dos->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
+		const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(reinterpret_cast<const BYTE*>(module) + dos->e_lfanew);
+		if (nt->Signature != IMAGE_NT_SIGNATURE) return nullptr;
+
+		BYTE* base = reinterpret_cast<BYTE*>(module);
+		const size_t size = static_cast<size_t>(nt->OptionalHeader.SizeOfImage);
+
+		// Frans AW2 camera:
+		// 48 8B 2D | ?? ?? ?? ?? 48 8B 3D ?? ?? ?? ?? 48 8B 5B 08 48 8B 83 E0 80 05 00
+		static constexpr BYTE pattern[] = {
+			0x48,0x8B,0x2D,0,0,0,0,
+			0x48,0x8B,0x3D,0,0,0,0,
+			0x48,0x8B,0x5B,0x08,
+			0x48,0x8B,0x83,0xE0,0x80,0x05,0x00
+		};
+		static constexpr char mask[] = "xxx????xxx????xxxxxxxxxxxx";
+
+		if (size < sizeof(pattern)) return nullptr;
+		for (size_t i = 0; i <= size - sizeof(pattern); ++i)
+		{
+			bool match = true;
+			for (size_t j = 0; j < sizeof(pattern); ++j)
+			{
+				if (mask[j] == 'x' && base[i + j] != pattern[j])
+				{
+					match = false;
+					break;
+				}
+			}
+			if (!match) continue;
+
+			BYTE* instruction = base + i;
+			const int32_t displacement = *reinterpret_cast<const int32_t*>(instruction + 3);
+			return reinterpret_cast<BYTE**>(instruction + 7 + displacement);
+		}
+		return nullptr;
+	}
+
+	static void TogglePause()
+	{
+		if (!s_PauseResolveAttempted)
+		{
+			s_PauseResolveAttempted = true;
+			s_PauseStructLocation = FindPauseStructLocation();
+		}
+
+		if (!s_PauseStructLocation) return;
+		BYTE* pauseStruct = *s_PauseStructLocation;
+		if (!pauseStruct) return;
+
+		// Exact field used by Frans' PauseFeature.
+		BYTE* pauseByte = pauseStruct + 0x39;
+		const BYTE current = *pauseByte;
+		*pauseByte = (current == 1) ? 0 : 1;
+	}
 
 	static float ApplyDeadzone(SHORT value, float deadzone)
 	{
@@ -152,6 +217,7 @@ namespace NorthLit::Input
 		{
 			s_PreviousInsertDown = false;
 			s_PreviousLogDown = false;
+			s_PreviousPauseDown = false;
 			return;
 		}
 		const bool insertDown = IsKeyDown(VK_INSERT);
@@ -160,6 +226,9 @@ namespace NorthLit::Input
 		const bool logDown = IsKeyDown(VK_F12);
 		if (logDown && !s_PreviousLogDown) s_LogBasisRequested = true;
 		s_PreviousLogDown = logDown;
+		const bool pauseDown = IsKeyDown(VK_NUMPAD0);
+		if (pauseDown && !s_PreviousPauseDown) TogglePause();
+		s_PreviousPauseDown = pauseDown;
 	}
 
 	export bool ConsumeToggleCameraRequest()
@@ -244,7 +313,7 @@ namespace NorthLit::Input
 		ImGui::DragFloat("Controller deadzone", &s_Settings.ControllerDeadzone, 0.01f, 0.0f, 0.95f);
 		ImGui::DragFloat("Controller rotation scale", &s_Settings.ControllerRotationScale, 0.05f, 0.1f, 5.0f);
 		ImGui::DragFloat("FOV speed", &s_Settings.FovSpeed, 0.5f, 1.0f, 180.0f);
-		ImGui::TextUnformatted("Insert: toggle camera | F12: log camera basis");
+		ImGui::TextUnformatted("Insert: camera | NP0: pause | F12: basis log");
 	}
 
 	export void GetBasis(const XMFLOAT4X4A& matrix, XMFLOAT3& right, XMFLOAT3& up, XMFLOAT3& forward)
