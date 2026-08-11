@@ -14,7 +14,7 @@ import std;
 
 using namespace DirectX;
 
-export namespace NorthLit::Input
+namespace NorthLit::Input
 {
 	struct CameraInputSettings
 	{
