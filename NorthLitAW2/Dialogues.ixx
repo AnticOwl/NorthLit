@@ -172,6 +172,7 @@ namespace NorthLit::Dialogues
 			}
 		}
 
+		ImGui::EndChild();
 		ImGui::EndTabItem();
 	}
 }
