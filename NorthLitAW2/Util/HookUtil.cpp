@@ -2,7 +2,6 @@
 #include <windows.h>
 
 #include "MinHook.h"
-#pragma comment(lib, "libMinHook.x64.lib")
 
 import HookUtil;
 import Log;
@@ -10,12 +9,13 @@ import Log;
 bool WriteMemory(void* dwAddress, const void* cpvPatch, unsigned int dwSize)
 {
 	DWORD dwProtect;
-	if (VirtualProtect((void*)dwAddress, dwSize, PAGE_READWRITE, &dwProtect)) //Unprotect the memory
-		memcpy((void*)dwAddress, cpvPatch, dwSize); //Write our patch
+	if (VirtualProtect((void*)dwAddress, dwSize, PAGE_READWRITE, &dwProtect))
+		memcpy((void*)dwAddress, cpvPatch, dwSize);
 	else
+		return false;
 
-		return false; //Failed to unprotect, so return false..
-	return VirtualProtect((void*)dwAddress, dwSize, dwProtect, new DWORD); //Reprotect the memory
+	DWORD restoreProtect = 0;
+	return VirtualProtect((void*)dwAddress, dwSize, dwProtect, &restoreProtect) != 0;
 }
 
 void OverrideVTableFunction(void* ppVTable, unsigned int index, void* pHook, void* pOriginal)
@@ -29,9 +29,7 @@ void OverrideVTableFunction(void* ppVTable, unsigned int index, void* pHook, voi
 	VirtualProtect((void*)((*(PDWORD64*)ppVTable) + index), sizeof(PDWORD64), dwOld, &dwOld);
 
 	if (pOriginal)
-	{
 		*(PBYTE*)pOriginal = pOrig;
-	}
 }
 
 void InitializeMinHook()
@@ -57,9 +55,7 @@ void CreateHook(void* pFunction, void* pHook, void* ppOriginal)
 
 	result = MH_EnableHook(pFunction);
 	if (result != MH_OK)
-	{
 		Log::Error("Error enabling hook at 0x%I64X - %s", pFunction, MH_StatusToString(result));
-	}
 }
 
 void RemoveHook(void* pFunction)
