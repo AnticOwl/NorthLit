@@ -37,26 +37,19 @@ export namespace NorthLit::Input
 	static bool IsForegroundProcess()
 	{
 		HWND foreground = GetForegroundWindow();
-		if (!foreground)
-			return false;
-
+		if (!foreground) return false;
 		DWORD pid = 0;
 		GetWindowThreadProcessId(foreground, &pid);
 		return pid == GetCurrentProcessId();
 	}
 
-	static bool IsKeyDown(int vk)
-	{
-		return (GetAsyncKeyState(vk) & 0x8000) != 0;
-	}
+	static bool IsKeyDown(int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; }
 
 	static float ApplyDeadzone(SHORT value, float deadzone)
 	{
 		const float normalized = std::clamp((float)value / 32767.0f, -1.0f, 1.0f);
 		const float magnitude = std::abs(normalized);
-		if (magnitude <= deadzone)
-			return 0.0f;
-
+		if (magnitude <= deadzone) return 0.0f;
 		const float scaled = (magnitude - deadzone) / (1.0f - deadzone);
 		return std::copysign(scaled, normalized);
 	}
@@ -64,18 +57,13 @@ export namespace NorthLit::Input
 	static float TriggerValue(BYTE value)
 	{
 		constexpr float deadzone = 30.0f;
-		if ((float)value <= deadzone)
-			return 0.0f;
+		if ((float)value <= deadzone) return 0.0f;
 		return ((float)value - deadzone) / (255.0f - deadzone);
 	}
 
 	static XMVECTOR LoadAxis(const XMFLOAT4X4A& matrix, int row)
 	{
-		return XMVector3Normalize(XMVectorSet(
-			matrix.m[row][0],
-			matrix.m[row][1],
-			matrix.m[row][2],
-			0.0f));
+		return XMVector3Normalize(XMVectorSet(matrix.m[row][0], matrix.m[row][1], matrix.m[row][2], 0.0f));
 	}
 
 	static void StoreAxis(XMFLOAT4X4A& matrix, int row, FXMVECTOR axis)
@@ -92,17 +80,12 @@ export namespace NorthLit::Input
 		XMVECTOR right = LoadAxis(matrix, 0);
 		XMVECTOR up = LoadAxis(matrix, 1);
 		XMVECTOR forward = LoadAxis(matrix, 2);
-
-		// Preserve the current handedness while removing accumulated numerical drift.
 		right = XMVector3Normalize(right);
 		up = XMVectorSubtract(up, XMVectorScale(right, XMVectorGetX(XMVector3Dot(up, right))));
 		up = XMVector3Normalize(up);
-
 		const float handedness = XMVectorGetX(XMVector3Dot(XMVector3Cross(right, up), forward));
 		forward = XMVector3Normalize(XMVector3Cross(right, up));
-		if (handedness < 0.0f)
-			forward = XMVectorNegate(forward);
-
+		if (handedness < 0.0f) forward = XMVectorNegate(forward);
 		StoreAxis(matrix, 0, right);
 		StoreAxis(matrix, 1, up);
 		StoreAxis(matrix, 2, forward);
@@ -113,28 +96,24 @@ export namespace NorthLit::Input
 		XMVECTOR right = LoadAxis(matrix, 0);
 		XMVECTOR up = LoadAxis(matrix, 1);
 		XMVECTOR forward = LoadAxis(matrix, 2);
-
 		if (yaw != 0.0f)
 		{
 			const XMMATRIX r = XMMatrixRotationAxis(up, yaw);
 			right = XMVector3TransformNormal(right, r);
 			forward = XMVector3TransformNormal(forward, r);
 		}
-
 		if (pitch != 0.0f)
 		{
 			const XMMATRIX r = XMMatrixRotationAxis(right, pitch);
 			up = XMVector3TransformNormal(up, r);
 			forward = XMVector3TransformNormal(forward, r);
 		}
-
 		if (roll != 0.0f)
 		{
 			const XMMATRIX r = XMMatrixRotationAxis(forward, roll);
 			right = XMVector3TransformNormal(right, r);
 			up = XMVector3TransformNormal(up, r);
 		}
-
 		StoreAxis(matrix, 0, right);
 		StoreAxis(matrix, 1, up);
 		StoreAxis(matrix, 2, forward);
@@ -146,17 +125,25 @@ export namespace NorthLit::Input
 		const XMVECTOR right = LoadAxis(matrix, 0);
 		const XMVECTOR up = LoadAxis(matrix, 1);
 		const XMVECTOR forward = LoadAxis(matrix, 2);
-
 		XMVECTOR delta = XMVectorZero();
 		delta = XMVectorAdd(delta, XMVectorScale(right, rightAmount));
 		delta = XMVectorAdd(delta, XMVectorScale(up, upAmount));
 		delta = XMVectorAdd(delta, XMVectorScale(forward, forwardAmount));
-
 		XMFLOAT3 d;
 		XMStoreFloat3(&d, delta);
 		matrix.m[3][0] += d.x;
 		matrix.m[3][1] += d.y;
 		matrix.m[3][2] += d.z;
+	}
+
+	export void MoveCameraRelative(XMFLOAT4X4A& matrix, float right, float up, float forward)
+	{
+		TranslateCamera(matrix, right, up, forward);
+	}
+
+	export void RotateCameraLocal(XMFLOAT4X4A& matrix, float pitch, float yaw, float roll)
+	{
+		RotateAroundCurrentAxes(matrix, pitch, yaw, roll);
 	}
 
 	export void UpdateHotkeys()
@@ -167,15 +154,11 @@ export namespace NorthLit::Input
 			s_PreviousLogDown = false;
 			return;
 		}
-
 		const bool insertDown = IsKeyDown(VK_INSERT);
-		if (insertDown && !s_PreviousInsertDown)
-			s_ToggleCameraRequested = true;
+		if (insertDown && !s_PreviousInsertDown) s_ToggleCameraRequested = true;
 		s_PreviousInsertDown = insertDown;
-
 		const bool logDown = IsKeyDown(VK_F12);
-		if (logDown && !s_PreviousLogDown)
-			s_LogBasisRequested = true;
+		if (logDown && !s_PreviousLogDown) s_LogBasisRequested = true;
 		s_PreviousLogDown = logDown;
 	}
 
@@ -195,22 +178,14 @@ export namespace NorthLit::Input
 
 	export void UpdateCamera(XMFLOAT4X4A& matrix, float& fov, double dt, float movementSpeed, float rotationSpeed)
 	{
-		if (!IsForegroundProcess())
-			return;
-
+		if (!IsForegroundProcess()) return;
 		const float frameScale = (float)std::clamp(dt * 60.0, 0.0, 4.0);
 		float speedMultiplier = 1.0f;
 		if (IsKeyDown(VK_SHIFT)) speedMultiplier *= s_Settings.FastMultiplier;
 		if (IsKeyDown(VK_CONTROL)) speedMultiplier *= s_Settings.SlowMultiplier;
 		if (IsKeyDown(VK_MENU)) speedMultiplier *= s_Settings.VerySlowMultiplier;
-
-		float moveRight = 0.0f;
-		float moveUp = 0.0f;
-		float moveForward = 0.0f;
-		float pitch = 0.0f;
-		float yaw = 0.0f;
-		float roll = 0.0f;
-		float fovDelta = 0.0f;
+		float moveRight = 0.0f, moveUp = 0.0f, moveForward = 0.0f;
+		float pitch = 0.0f, yaw = 0.0f, roll = 0.0f, fovDelta = 0.0f;
 
 		if (s_Settings.KeyboardEnabled)
 		{
@@ -220,14 +195,12 @@ export namespace NorthLit::Input
 			if (IsKeyDown(VK_NUMPAD4)) moveRight -= 1.0f;
 			if (IsKeyDown(VK_NUMPAD9)) moveUp += 1.0f;
 			if (IsKeyDown(VK_NUMPAD7)) moveUp -= 1.0f;
-
 			if (IsKeyDown(VK_UP)) pitch += 1.0f;
 			if (IsKeyDown(VK_DOWN)) pitch -= 1.0f;
 			if (IsKeyDown(VK_RIGHT)) yaw += 1.0f;
 			if (IsKeyDown(VK_LEFT)) yaw -= 1.0f;
 			if (IsKeyDown(VK_NUMPAD3)) roll += 1.0f;
 			if (IsKeyDown(VK_NUMPAD1)) roll -= 1.0f;
-
 			if (IsKeyDown(VK_ADD)) fovDelta += 1.0f;
 			if (IsKeyDown(VK_SUBTRACT)) fovDelta -= 1.0f;
 		}
@@ -237,16 +210,13 @@ export namespace NorthLit::Input
 			XINPUT_STATE state{};
 			for (DWORD index = 0; index < XUSER_MAX_COUNT; ++index)
 			{
-				if (XInputGetState(index, &state) != ERROR_SUCCESS)
-					continue;
-
+				if (XInputGetState(index, &state) != ERROR_SUCCESS) continue;
 				const auto& pad = state.Gamepad;
 				moveRight += ApplyDeadzone(pad.sThumbLX, s_Settings.ControllerDeadzone);
 				moveForward += ApplyDeadzone(pad.sThumbLY, s_Settings.ControllerDeadzone);
 				yaw += ApplyDeadzone(pad.sThumbRX, s_Settings.ControllerDeadzone) * s_Settings.ControllerRotationScale;
 				pitch += ApplyDeadzone(pad.sThumbRY, s_Settings.ControllerDeadzone) * s_Settings.ControllerRotationScale;
 				moveUp += TriggerValue(pad.bRightTrigger) - TriggerValue(pad.bLeftTrigger);
-
 				if (pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) roll += 1.0f;
 				if (pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) roll -= 1.0f;
 				if (pad.wButtons & XINPUT_GAMEPAD_DPAD_UP) fovDelta += 1.0f;
@@ -258,17 +228,9 @@ export namespace NorthLit::Input
 		}
 
 		const float translationStep = movementSpeed * frameScale * speedMultiplier;
-		TranslateCamera(matrix,
-			moveRight * translationStep,
-			moveUp * translationStep,
-			moveForward * translationStep);
-
+		TranslateCamera(matrix, moveRight * translationStep, moveUp * translationStep, moveForward * translationStep);
 		const float rotationStep = rotationSpeed * frameScale;
-		RotateAroundCurrentAxes(matrix,
-			pitch * rotationStep,
-			yaw * rotationStep,
-			roll * rotationStep);
-
+		RotateAroundCurrentAxes(matrix, pitch * rotationStep, yaw * rotationStep, roll * rotationStep);
 		fov = std::clamp(fov + fovDelta * s_Settings.FovSpeed * (float)dt, 1.0f, 179.0f);
 	}
 
