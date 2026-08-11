@@ -44,19 +44,18 @@ namespace NorthLit
 	static bool s_HotsampleFixEnabled = true;
 	static DWORD s_HotkeyUIToggle = VK_F5;
 
-	// IGCS screenshot-session state.
 	static bool s_IgcsSessionActive = false;
-	static uint8_t s_IgcsSessionType = 0;
+	static unsigned char s_IgcsSessionType = 0;
 	static XMFLOAT4X4A s_IgcsSessionMatrix{};
 	static float s_IgcsSessionFov = 60.0f;
 	static LPBYTE s_IgcsDataBuffer = nullptr;
 
 	struct IgcsCameraToolsData
 	{
-		uint8_t cameraEnabled;
-		uint8_t cameraMovementLocked;
-		uint8_t reserved1;
-		uint8_t reserved2;
+		unsigned char cameraEnabled;
+		unsigned char cameraMovementLocked;
+		unsigned char reserved1;
+		unsigned char reserved2;
 		float fov;
 		float coordinates[3];
 		float lookQuaternion[4];
@@ -77,18 +76,12 @@ namespace NorthLit
 
 	void SetCameraEnabled(bool enabled)
 	{
-		if (enabled == s_CameraEnabled)
-			return;
-
+		if (enabled == s_CameraEnabled) return;
 		if (enabled)
 		{
 			XMFLOAT4X4A* pCameraTransform = (XMFLOAT4X4A*)GetOffset(Offset::CameraTransform);
-			if (pCameraTransform)
-				s_CameraMatrix = *pCameraTransform;
-
-			if (s_LastGameFovRadians > 0.0f)
-				s_CameraFov = XMConvertToDegrees(s_LastGameFovRadians);
-
+			if (pCameraTransform) s_CameraMatrix = *pCameraTransform;
+			if (s_LastGameFovRadians > 0.0f) s_CameraFov = XMConvertToDegrees(s_LastGameFovRadians);
 			Log::Write("[Camera] Enabled - FOV %.3f", s_CameraFov);
 		}
 		else
@@ -96,7 +89,6 @@ namespace NorthLit
 			s_IgcsSessionActive = false;
 			Log::Write("[Camera] Disabled");
 		}
-
 		s_CameraEnabled = enabled;
 	}
 
@@ -175,8 +167,7 @@ namespace NorthLit
 		case VK_PRIOR: case VK_NEXT:
 		case VK_END: case VK_HOME:
 		case VK_INSERT: case VK_DELETE:
-		case VK_DIVIDE:
-		case VK_NUMLOCK:
+		case VK_DIVIDE: case VK_NUMLOCK:
 			scanCode |= 0x100;
 			break;
 		}
@@ -231,12 +222,10 @@ namespace NorthLit
 				Lights::DrawLightsTab();
 				ImGui::EndTabItem();
 			}
-
 			if (ImGui::BeginTabItem("Camera"))
 			{
 				bool enabled = s_CameraEnabled;
 				if (ImGui::Checkbox("Enabled", &enabled)) SetCameraEnabled(enabled);
-
 				ImGui::Separator();
 				ImGui::DragFloat3("Position", s_CameraMatrix.m[3], s_MovementSpeed);
 				ImGui::DragFloat("FOV", &s_CameraFov, 0.1f, 1.0f, 179.0f);
@@ -246,7 +235,6 @@ namespace NorthLit
 				Input::DrawCameraInputUI();
 				if (ImGui::Button("Log camera basis")) LogCameraBasis();
 				ImGui::Separator();
-
 				static float* s_ExposureMode = nullptr;
 				static float* s_FixedExposure = nullptr;
 				if (s_ExposureMode == nullptr || s_FixedExposure == nullptr)
@@ -267,14 +255,12 @@ namespace NorthLit
 					if (ImGui::Checkbox("Override Exposure", &s_OverrideExposure))
 						*s_ExposureMode = s_OverrideExposure ? 0.0f : 1.0f;
 				}
-
 				ImGui::NewLine();
 				ImGui::Separator();
 				ImGui::NewLine();
 				ImGui::Checkbox("Enable hotsample fix", &s_HotsampleFixEnabled);
 				ImGui::EndTabItem();
 			}
-
 			if (ImGui::BeginTabItem("Global Parameters"))
 			{
 				static std::string s_GlobalParamFilter = "";
@@ -284,8 +270,7 @@ namespace NorthLit
 				for (const auto& param : s_GlobalParameters)
 				{
 					const std::string paramName = std::string(param->m_Name);
-					auto it = std::search(paramName.begin(), paramName.end(), s_GlobalParamFilter.begin(), s_GlobalParamFilter.end(),
-						[](char a, char b) { return std::tolower(a) == std::tolower(b); });
+					auto it = std::search(paramName.begin(), paramName.end(), s_GlobalParamFilter.begin(), s_GlobalParamFilter.end(), [](char a, char b) { return std::tolower(a) == std::tolower(b); });
 					if (it == paramName.end()) continue;
 					filteredParameters.emplace_back(param);
 				}
@@ -293,8 +278,7 @@ namespace NorthLit
 				{
 					const std::string nameA = std::string(a->m_Name, a->m_SzName);
 					const std::string nameB = std::string(b->m_Name, b->m_SzName);
-					return std::lexicographical_compare(nameA.begin(), nameA.end(), nameB.begin(), nameB.end(),
-						[](char c1, char c2) { return std::tolower(c1) < std::tolower(c2); });
+					return std::lexicographical_compare(nameA.begin(), nameA.end(), nameB.begin(), nameB.end(), [](char c1, char c2) { return std::tolower(c1) < std::tolower(c2); });
 				});
 				ImGui::BeginChild("##GlobalParamFrame", ImVec2(-FLT_MIN, -FLT_MIN));
 				for (auto parameter : filteredParameters)
@@ -313,7 +297,6 @@ namespace NorthLit
 				ImGui::EndChild();
 				ImGui::EndTabItem();
 			}
-
 			Animation::DrawTab();
 			Dialogues::DrawTab();
 #if ENABLE_DEV_MENU
@@ -321,7 +304,6 @@ namespace NorthLit
 #endif
 			ImGui::EndTabBar();
 		}
-
 		if (ImGui::BeginPopupModal("Change hotkey"))
 		{
 			ImGui::Text("Press any modifier (CTRL, SHIFT..) and any other key or ESC to cancel");
@@ -335,22 +317,13 @@ namespace NorthLit
 			}
 			ImGui::EndPopup();
 		}
-
 		ImGui::End();
 		Lights::DrawLightEditors();
 	}
 
 	void dumpEcsIds()
 	{
-		struct EcsIdInfo
-		{
-			EcsIdInfo* pNext;
-			unsigned int* pId;
-			const char* type;
-			__int64 unk1;
-			const char* name;
-			__int64 unk2;
-		};
+		struct EcsIdInfo { EcsIdInfo* pNext; unsigned int* pId; const char* type; __int64 unk1; const char* name; __int64 unk2; };
 		std::unordered_map<std::string, unsigned int> nameMap;
 		std::vector<std::pair<unsigned int, EcsIdInfo*>> idInfos;
 		EcsIdInfo* pIdInfo = *(EcsIdInfo**)GetOffset(Offset::EcsTypeInfo);
@@ -417,7 +390,6 @@ namespace NorthLit
 		data->coordinates[0] = s_CameraMatrix.m[3][0];
 		data->coordinates[1] = s_CameraMatrix.m[3][1];
 		data->coordinates[2] = s_CameraMatrix.m[3][2];
-
 		XMFLOAT3 right{}, up{}, forward{};
 		Input::GetBasis(s_CameraMatrix, right, up, forward);
 		data->rotationMatrixRightVector[0] = right.x;
@@ -429,7 +401,6 @@ namespace NorthLit
 		data->rotationMatrixForwardVector[0] = forward.x;
 		data->rotationMatrixForwardVector[1] = forward.y;
 		data->rotationMatrixForwardVector[2] = forward.z;
-
 		XMMATRIX rot = XMLoadFloat4x4A(&s_CameraMatrix);
 		rot.r[3] = g_XMIdentityR3;
 		XMFLOAT4 q{};
@@ -443,7 +414,7 @@ namespace NorthLit
 		data->roll = 0.0f;
 	}
 
-	uint8_t StartIgcsSession(uint8_t type)
+	int StartIgcsSession(unsigned char type)
 	{
 		if (!s_CameraEnabled) return 1;
 		if (s_IgcsSessionActive) return 3;
@@ -516,20 +487,17 @@ namespace NorthLit
 			const auto now = std::chrono::steady_clock::now();
 			const double dt = std::chrono::duration<double>(now - lastUpdate).count();
 			lastUpdate = now;
-
 			if ((s_HotkeyUIToggle >> 8 == 0 || GetAsyncKeyState(s_HotkeyUIToggle >> 8) & 0x8000) && GetAsyncKeyState(s_HotkeyUIToggle % 0xFF) & 0x8000)
 			{
 				while ((s_HotkeyUIToggle >> 8 == 0 || GetAsyncKeyState(s_HotkeyUIToggle >> 8) & 0x8000) && GetAsyncKeyState(s_HotkeyUIToggle % 0xFF) & 0x8000)
 					std::this_thread::sleep_for(std::chrono::milliseconds(1));
 				UI::GetInstance().Toggle();
 			}
-
 			Input::UpdateHotkeys();
 			if (Input::ConsumeToggleCameraRequest()) SetCameraEnabled(!s_CameraEnabled);
 			if (s_CameraEnabled && !s_IgcsSessionActive)
 				Input::UpdateCamera(s_CameraMatrix, s_CameraFov, dt, s_MovementSpeed, s_RotationSpeed);
 			if (Input::ConsumeLogBasisRequest() && s_CameraEnabled) LogCameraBasis();
-
 			if (!s_IgcsDataBuffer && std::chrono::duration<double>(now - lastIgcsConnectAttempt).count() >= 1.0)
 			{
 				lastIgcsConnectAttempt = now;
@@ -539,7 +507,6 @@ namespace NorthLit
 			Animation::Update();
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
-
 		UI::GetInstance().SetVisible(false);
 		Renderer::GetInstance().Shutdown();
 		UI::GetInstance().Shutdown();
@@ -555,7 +522,7 @@ namespace NorthLit
 	}
 }
 
-extern "C" __declspec(dllexport) uint8_t IGCS_StartScreenshotSession(uint8_t type)
+extern "C" __declspec(dllexport) int IGCS_StartScreenshotSession(unsigned char type)
 {
 	return NorthLit::StartIgcsSession(type);
 }
