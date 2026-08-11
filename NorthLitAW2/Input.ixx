@@ -195,8 +195,8 @@ namespace NorthLit::Input
 			if (IsKeyDown(VK_NUMPAD4)) moveRight -= 1.0f;
 			if (IsKeyDown(VK_NUMPAD9)) moveUp += 1.0f;
 			if (IsKeyDown(VK_NUMPAD7)) moveUp -= 1.0f;
-			if (IsKeyDown(VK_UP)) pitch += 1.0f;
-			if (IsKeyDown(VK_DOWN)) pitch -= 1.0f;
+			if (IsKeyDown(VK_UP)) pitch -= 1.0f;
+			if (IsKeyDown(VK_DOWN)) pitch += 1.0f;
 			if (IsKeyDown(VK_RIGHT)) yaw += 1.0f;
 			if (IsKeyDown(VK_LEFT)) yaw -= 1.0f;
 			if (IsKeyDown(VK_NUMPAD3)) roll += 1.0f;
@@ -215,7 +215,7 @@ namespace NorthLit::Input
 				moveRight += ApplyDeadzone(pad.sThumbLX, s_Settings.ControllerDeadzone);
 				moveForward += ApplyDeadzone(pad.sThumbLY, s_Settings.ControllerDeadzone);
 				yaw += ApplyDeadzone(pad.sThumbRX, s_Settings.ControllerDeadzone) * s_Settings.ControllerRotationScale;
-				pitch += ApplyDeadzone(pad.sThumbRY, s_Settings.ControllerDeadzone) * s_Settings.ControllerRotationScale;
+				pitch -= ApplyDeadzone(pad.sThumbRY, s_Settings.ControllerDeadzone) * s_Settings.ControllerRotationScale;
 				moveUp += TriggerValue(pad.bRightTrigger) - TriggerValue(pad.bLeftTrigger);
 				if (pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) roll += 1.0f;
 				if (pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) roll -= 1.0f;
