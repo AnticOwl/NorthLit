@@ -41,4 +41,4 @@ export namespace Offsets
 	long long GetOffset(const std::string& name);
 }
 
-export constexpr long long GetOffset(Offset eOffset);
+export long long GetOffset(Offset eOffset);
