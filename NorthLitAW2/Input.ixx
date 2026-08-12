@@ -32,10 +32,13 @@ namespace NorthLit::Input
 	static bool s_PreviousInsertDown = false;
 	static bool s_PreviousLogDown = false;
 	static bool s_PreviousPauseDown = false;
+	static bool s_PreviousHudDown = false;
 	static bool s_ToggleCameraRequested = false;
 	static bool s_LogBasisRequested = false;
 	static BYTE** s_PauseStructLocation = nullptr;
 	static bool s_PauseResolveAttempted = false;
+	static BYTE* s_HudPatchLocation = nullptr;
+	static bool s_HudResolveAttempted = false;
 
 	static bool IsForegroundProcess()
 	{
@@ -108,6 +111,76 @@ namespace NorthLit::Input
 		BYTE* pauseByte = pauseStruct + 0x39;
 		const BYTE current = *pauseByte;
 		*pauseByte = (current == 1) ? 0 : 1;
+	}
+
+	static BYTE* FindHudPatchLocation()
+	{
+		HMODULE module = GetModuleHandleW(nullptr);
+		if (!module) return nullptr;
+
+		const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(module);
+		if (dos->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
+		const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(reinterpret_cast<const BYTE*>(module) + dos->e_lfanew);
+		if (nt->Signature != IMAGE_NT_SIGNATURE) return nullptr;
+
+		BYTE* base = reinterpret_cast<BYTE*>(module);
+		const size_t size = static_cast<size_t>(nt->OptionalHeader.SizeOfImage);
+
+		// Frans AW2 HUD toggle location. Patch starts at match + 4:
+		// 90 40 84 FF | 74 4D 44 8B 0D ?? ?? ?? ?? 0F B6 15 ?? ?? ?? ?? 81 FA 80 00 00 00 73 09
+		static constexpr BYTE pattern[] = {
+			0x90,0x40,0x84,0xFF,0x74,0x4D,0x44,0x8B,0x0D,0,0,0,0,
+			0x0F,0xB6,0x15,0,0,0,0,0x81,0xFA,0x80,0x00,0x00,0x00,0x73,0x09
+		};
+		static constexpr char mask[] = "xxxxxxxxx????xxx????xxxxxxxx";
+
+		if (size < sizeof(pattern)) return nullptr;
+		for (size_t i = 0; i <= size - sizeof(pattern); ++i)
+		{
+			bool match = true;
+			for (size_t j = 0; j < sizeof(pattern); ++j)
+			{
+				if (mask[j] == 'x' && base[i + j] != pattern[j])
+				{
+					match = false;
+					break;
+				}
+			}
+			if (match) return base + i + 4;
+		}
+		return nullptr;
+	}
+
+	static bool WriteHudBytes(BYTE first, BYTE second)
+	{
+		if (!s_HudPatchLocation) return false;
+		DWORD oldProtect = 0;
+		if (!VirtualProtect(s_HudPatchLocation, 2, PAGE_EXECUTE_READWRITE, &oldProtect)) return false;
+		s_HudPatchLocation[0] = first;
+		s_HudPatchLocation[1] = second;
+		FlushInstructionCache(GetCurrentProcess(), s_HudPatchLocation, 2);
+		DWORD ignored = 0;
+		VirtualProtect(s_HudPatchLocation, 2, oldProtect, &ignored);
+		return true;
+	}
+
+	static void ToggleHud()
+	{
+		if (!s_HudResolveAttempted)
+		{
+			s_HudResolveAttempted = true;
+			s_HudPatchLocation = FindHudPatchLocation();
+		}
+		if (!s_HudPatchLocation) return;
+
+		if (s_HudPatchLocation[0] == 0x74 && s_HudPatchLocation[1] == 0x4D)
+		{
+			WriteHudBytes(0x90, 0x90);
+		}
+		else if (s_HudPatchLocation[0] == 0x90 && s_HudPatchLocation[1] == 0x90)
+		{
+			WriteHudBytes(0x74, 0x4D);
+		}
 	}
 
 	static float ApplyDeadzone(SHORT value, float deadzone)
@@ -218,6 +291,7 @@ namespace NorthLit::Input
 			s_PreviousInsertDown = false;
 			s_PreviousLogDown = false;
 			s_PreviousPauseDown = false;
+			s_PreviousHudDown = false;
 			return;
 		}
 		const bool insertDown = IsKeyDown(VK_INSERT);
@@ -229,6 +303,9 @@ namespace NorthLit::Input
 		const bool pauseDown = IsKeyDown(VK_NUMPAD0);
 		if (pauseDown && !s_PreviousPauseDown) TogglePause();
 		s_PreviousPauseDown = pauseDown;
+		const bool hudDown = IsKeyDown(VK_DELETE);
+		if (hudDown && !s_PreviousHudDown) ToggleHud();
+		s_PreviousHudDown = hudDown;
 	}
 
 	export bool ConsumeToggleCameraRequest()
@@ -313,7 +390,7 @@ namespace NorthLit::Input
 		ImGui::DragFloat("Controller deadzone", &s_Settings.ControllerDeadzone, 0.01f, 0.0f, 0.95f);
 		ImGui::DragFloat("Controller rotation scale", &s_Settings.ControllerRotationScale, 0.05f, 0.1f, 5.0f);
 		ImGui::DragFloat("FOV speed", &s_Settings.FovSpeed, 0.5f, 1.0f, 180.0f);
-		ImGui::TextUnformatted("Insert: camera | NP0: pause | F12: basis log");
+		ImGui::TextUnformatted("Insert: camera | NP0: pause | Delete: HUD | F12: basis log");
 	}
 
 	export void GetBasis(const XMFLOAT4X4A& matrix, XMFLOAT3& right, XMFLOAT3& up, XMFLOAT3& forward)
