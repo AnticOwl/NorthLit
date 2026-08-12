@@ -229,6 +229,7 @@ namespace NorthLit::Input
 		StoreAxis(matrix, 2, forward);
 	}
 
+	// Fully local rotation is kept for IGCS panorama operations.
 	static void RotateAroundCurrentAxes(XMFLOAT4X4A& matrix, float pitch, float yaw, float roll)
 	{
 		XMVECTOR right = LoadAxis(matrix, 0);
@@ -256,6 +257,57 @@ namespace NorthLit::Input
 		StoreAxis(matrix, 1, up);
 		StoreAxis(matrix, 2, forward);
 		Orthonormalize(matrix);
+	}
+
+	// Interactive camera rotation: yaw is around AW2's stable world-up axis (+Y),
+	// so normal yaw/pitch movement cannot accumulate unintended roll.
+	static void RotateControlled(XMFLOAT4X4A& matrix, float pitch, float yaw, float roll)
+	{
+		XMVECTOR right = LoadAxis(matrix, 0);
+		XMVECTOR up = LoadAxis(matrix, 1);
+		XMVECTOR forward = LoadAxis(matrix, 2);
+		const XMVECTOR worldUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+
+		if (yaw != 0.0f)
+		{
+			const XMMATRIX r = XMMatrixRotationAxis(worldUp, yaw);
+			right = XMVector3TransformNormal(right, r);
+			up = XMVector3TransformNormal(up, r);
+			forward = XMVector3TransformNormal(forward, r);
+		}
+		if (pitch != 0.0f)
+		{
+			right = XMVector3Normalize(right);
+			const XMMATRIX r = XMMatrixRotationAxis(right, pitch);
+			up = XMVector3TransformNormal(up, r);
+			forward = XMVector3TransformNormal(forward, r);
+		}
+		if (roll != 0.0f)
+		{
+			forward = XMVector3Normalize(forward);
+			const XMMATRIX r = XMMatrixRotationAxis(forward, roll);
+			right = XMVector3TransformNormal(right, r);
+			up = XMVector3TransformNormal(up, r);
+		}
+
+		StoreAxis(matrix, 0, right);
+		StoreAxis(matrix, 1, up);
+		StoreAxis(matrix, 2, forward);
+		Orthonormalize(matrix);
+	}
+
+	static void ResetRoll(XMFLOAT4X4A& matrix)
+	{
+		const XMVECTOR forward = LoadAxis(matrix, 2);
+		const XMVECTOR worldUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+		const float alignment = std::abs(XMVectorGetX(XMVector3Dot(forward, worldUp)));
+		if (alignment > 0.9995f) return;
+
+		const XMVECTOR right = XMVector3Normalize(XMVector3Cross(worldUp, forward));
+		const XMVECTOR up = XMVector3Normalize(XMVector3Cross(forward, right));
+		StoreAxis(matrix, 0, right);
+		StoreAxis(matrix, 1, up);
+		StoreAxis(matrix, 2, forward);
 	}
 
 	static void TranslateCamera(XMFLOAT4X4A& matrix, float rightAmount, float upAmount, float forwardAmount)
@@ -332,6 +384,7 @@ namespace NorthLit::Input
 		if (IsKeyDown(VK_MENU)) speedMultiplier *= s_Settings.VerySlowMultiplier;
 		float moveRight = 0.0f, moveUp = 0.0f, moveForward = 0.0f;
 		float pitch = 0.0f, yaw = 0.0f, roll = 0.0f, fovDelta = 0.0f;
+		bool resetRoll = false;
 
 		if (s_Settings.KeyboardEnabled)
 		{
@@ -347,6 +400,7 @@ namespace NorthLit::Input
 			if (IsKeyDown(VK_LEFT)) yaw -= 1.0f;
 			if (IsKeyDown(VK_NUMPAD3)) roll += 1.0f;
 			if (IsKeyDown(VK_NUMPAD1)) roll -= 1.0f;
+			if (IsKeyDown(VK_NUMPAD2)) resetRoll = true;
 			if (IsKeyDown(VK_ADD)) fovDelta += 1.0f;
 			if (IsKeyDown(VK_SUBTRACT)) fovDelta -= 1.0f;
 		}
@@ -376,7 +430,8 @@ namespace NorthLit::Input
 		const float translationStep = movementSpeed * frameScale * speedMultiplier;
 		TranslateCamera(matrix, moveRight * translationStep, moveUp * translationStep, moveForward * translationStep);
 		const float rotationStep = rotationSpeed * frameScale;
-		RotateAroundCurrentAxes(matrix, pitch * rotationStep, yaw * rotationStep, roll * rotationStep);
+		RotateControlled(matrix, pitch * rotationStep, yaw * rotationStep, roll * rotationStep);
+		if (resetRoll) ResetRoll(matrix);
 		fov = std::clamp(fov + fovDelta * s_Settings.FovSpeed * (float)dt, 1.0f, 179.0f);
 	}
 
@@ -390,7 +445,7 @@ namespace NorthLit::Input
 		ImGui::DragFloat("Controller deadzone", &s_Settings.ControllerDeadzone, 0.01f, 0.0f, 0.95f);
 		ImGui::DragFloat("Controller rotation scale", &s_Settings.ControllerRotationScale, 0.05f, 0.1f, 5.0f);
 		ImGui::DragFloat("FOV speed", &s_Settings.FovSpeed, 0.5f, 1.0f, 180.0f);
-		ImGui::TextUnformatted("Insert: camera | NP0: pause | Delete: HUD | F12: basis log");
+		ImGui::TextUnformatted("Insert: camera | NP0: pause | Delete: HUD | NP2: reset roll | F12: basis log");
 	}
 
 	export void GetBasis(const XMFLOAT4X4A& matrix, XMFLOAT3& right, XMFLOAT3& up, XMFLOAT3& forward)
