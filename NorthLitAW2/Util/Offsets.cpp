@@ -150,7 +150,7 @@ bool Offsets::ScanOffsets()
 	s_Signatures[Offset::PuppetUpdate] = Signature("48 8B C4 48 89 70 20 41 56");
 	s_Signatures[Offset::ResourceManager] = Signature("48 8B 0D [ ?? ?? ?? ?? ] E8 ?? ?? ?? ?? 48 8B D8 48 85 C0 74 09");
 	s_Signatures[Offset::RegisterId] = Signature("E8 [ ?? ?? ?? ?? ] 48 83 C3 10 48 3B DE 74 27");
-	s_Signatures[Offset::RendererInterface] = Signature("48 8D 0D [ ?? ?? ?? ?? ] 0F 85 9B FD FF FF");
+	s_Signatures[Offset::RendererInterface] = Signature("48 8D 0D [ ?? ?? ?? ?? ] 0F 85 90 FD FF FF");
 	s_Signatures[Offset::SpawnArchetype] = Signature("48 89 5C 24 08 55 56 57 48 8D 6C 24 B9 48 81 EC 00");
 
 	__int64 codeSegment = 0;
@@ -251,7 +251,11 @@ bool Offsets::ScanOffsets()
 			Log::Error("Could not find Offset::%s", OffsetToString(static_cast<Offset>(i)));
 		}
 	}
-	return foundAll;
+	// RendererInterface is optional while the post-update renderer global is being re-located.
+	// Keep the validated camera core available instead of accepting false-positive renderer matches.
+	const bool cameraCoreFound = s_Signatures[Offset::CameraUpdate].Result &&
+		s_Signatures[Offset::GlobalParams].Result;
+	return cameraCoreFound;
 }
 
 long long GetOffset(Offset eOffset)
