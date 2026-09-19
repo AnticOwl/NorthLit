@@ -13,6 +13,19 @@ import std;
 
 namespace NorthLit::Lights
 {
+	using CameraMatrixProvider = XMFLOAT4X4A* (*)();
+	static CameraMatrixProvider s_CameraMatrixProvider = nullptr;
+
+	export void SetCameraMatrixProvider(CameraMatrixProvider provider)
+	{
+		s_CameraMatrixProvider = provider;
+	}
+
+	static XMFLOAT4X4A* GetCameraMatrix()
+	{
+		return s_CameraMatrixProvider ? s_CameraMatrixProvider() : nullptr;
+	}
+
 	struct Light
 	{
 		Northlight::content::EntityArchetype* Archetype;
@@ -385,7 +398,13 @@ namespace NorthLit::Lights
 
 				if (ImGui::Button("Move to camera"))
 				{
-					XMFLOAT4X4A* pCameraTransform = (XMFLOAT4X4A*)GetOffset(Offset::CameraTransform);
+					XMFLOAT4X4A* pCameraTransform = GetCameraMatrix();
+					if (!pCameraTransform)
+					{
+						Log::Warning("[Lights] No live camera matrix available");
+					}
+					else
+					{
 					XMVECTOR qRotation = XMQuaternionRotationMatrix(XMLoadFloat4x4A(pCameraTransform));
 					XMVECTOR vPosition = XMLoadFloat3((XMFLOAT3*)pCameraTransform->m[3]);
 
@@ -393,6 +412,7 @@ namespace NorthLit::Lights
 					XMStoreFloat4(&transformComponent2->Rotation, qRotation);
 					XMStoreFloat4(&transformComponent1->Position, vPosition);
 					XMStoreFloat4(&transformComponent2->Position, vPosition);
+					}
 				}
 
 				ImGui::NewLine();
@@ -459,7 +479,13 @@ namespace NorthLit::Lights
 
 		if (ImGui::Button("Create spotlight"))
 		{
-			XMFLOAT4X4A* pCameraTransform = (XMFLOAT4X4A*)GetOffset(Offset::CameraTransform);
+			XMFLOAT4X4A* pCameraTransform = GetCameraMatrix();
+			if (!pCameraTransform)
+			{
+				Log::Warning("[Lights] No live camera matrix available for spotlight creation");
+			}
+			else
+			{
 			XMVECTOR qRotation = XMQuaternionRotationMatrix(XMLoadFloat4x4A(pCameraTransform));
 
 			XMStoreFloat4(&s_ArchetypeTransform->m_qRotation, qRotation);
@@ -469,6 +495,7 @@ namespace NorthLit::Lights
 			s_ArchetypeTransform->m_vPosition.z = pCameraTransform->m[3][2];
 
 			ImGui::OpenPopup("New spotlight");
+			}
 		}
 
 		ImGui::BeginChild("##Lights", ImVec2(0, 0), true);
