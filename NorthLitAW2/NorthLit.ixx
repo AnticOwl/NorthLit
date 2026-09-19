@@ -54,6 +54,13 @@ namespace NorthLit
 	static float s_IgcsSessionFov = 60.0f;
 	static LPBYTE s_IgcsDataBuffer = nullptr;
 
+	XMFLOAT4X4A* GetActiveCameraMatrixForLights()
+	{
+		if (s_CameraEnabled) return &s_CameraMatrix;
+		if (s_HasLastGameCameraMatrix) return &s_LastGameCameraMatrix;
+		return nullptr;
+	}
+
 	struct IgcsCameraToolsData
 	{
 		unsigned char cameraEnabled;
@@ -525,6 +532,7 @@ namespace NorthLit
 		Log::Write("[Init] Dialogues Init OK");
 
 		Log::Write("[Init] Lights Init begin");
+		Lights::SetCameraMatrixProvider(&GetActiveCameraMatrixForLights);
 		Lights::Initialize();
 		Log::Write("[Init] Lights Init OK");
 
