@@ -280,12 +280,23 @@ HRESULT Renderer::OnResizeBuffers(IDXGISwapChain* pSwapChain, UINT BufferCount, 
 	Log::Write("Renderer::ResizeBuffers");
 
 	WaitForLastFrame();
-	ImGui_ImplDX12_InvalidateDeviceObjects();
+
+	// A DXGI resize/hotsample requires a complete DX12 backend rebuild.
+	// Calling ImGui_ImplDX12_Init() again while the backend is still alive
+	// triggers "Already initialized a renderer backend!".
+	ImGui_ImplDX12_Shutdown();
 	ReleaseDx12Objects();
 
 	HRESULT result = oIDXGISwapChain_ResizeBuffers(pSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
 
-	InitDx12Objects();
+	if (SUCCEEDED(result))
+	{
+		if (!InitDx12Objects())
+		{
+			Log::Error("[Renderer] Failed to rebuild DX12 objects after ResizeBuffers");
+			s_Dx12Ready = false;
+		}
+	}
 
 	return result;
 }
@@ -479,8 +490,6 @@ bool Renderer::InitDx12Objects()
 
 void Renderer::ReleaseDx12Objects()
 {
-	ImGui_ImplDX12_InvalidateDeviceObjects();
-
 	m_BackBufferCount = 0;
 
 	for (FrameContext& frameContext : m_FrameContexts)
