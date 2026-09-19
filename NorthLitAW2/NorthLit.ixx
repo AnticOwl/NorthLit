@@ -498,13 +498,30 @@ namespace NorthLit
 		UpdateGlobalParameters();
 		Log::Write("[Init] UpdateGlobalParameters OK");
 
-		// RendererInterface moved in the September 2026 update and the previous
-		// replacement signature matched an unrelated Wwise global. Keep the
-		// validated camera path alive while the real renderer global is relocated.
-		s_UiAvailable = false;
+		Log::Write("[Init] UI Init begin");
+		if (!UI::GetInstance().Init())
+		{
+			Log::Error("[Init] UI Init failed");
+			return false;
+		}
+		Log::Write("[Init] UI Init OK");
+
+		Log::Write("[Init] Renderer DXGI bootstrap begin");
+		if (!Renderer::GetInstance().Init())
+		{
+			Log::Error("[Init] Renderer DXGI bootstrap failed");
+			return false;
+		}
+		Log::Write("[Init] Renderer DXGI bootstrap OK");
+		s_UiAvailable = true;
 		s_AnimationAvailable = false;
-		Log::Warning("[Compatibility] Renderer/UI disabled - RendererInterface signature still unresolved");
-		Log::Warning("[Compatibility] Camera, pause, HUD and IGCS remain enabled");
+
+		UI::GetInstance().RegisterDrawCb([=] {OnDrawUI(); });
+		UI::GetInstance().SetVisible(true);
+		Log::Write("[Init] UI callback OK");
+
+		// Keep the remaining post-update systems isolated until the new renderer path is validated.
+		Log::Warning("[Compatibility] Animation, dialogues, lights and hotsample hook temporarily disabled for UI validation");
 
 		Log::Write("[Init] Camera hook begin");
 		void* pCameraUpdateFunc = (void*)GetOffset(Offset::CameraUpdate);
