@@ -132,11 +132,11 @@ bool Offsets::ScanOffsets()
 	s_Signatures[Offset::CameraTransform] = Signature("C5 7A 11 0D ?? ?? ?? ?? C5 FC 10 45 80 C5 FC 11 05 [ ?? ?? ?? ?? ] C5 F8 10 45 A0 C5 F9 7F 05");
 	s_Signatures[Offset::CameraUpdate] = Signature("4C 8B DC 53 56 57 41 56");
 	s_Signatures[Offset::CityHash] = Signature("49 8B C8 E8 [ ?? ?? ?? ?? ] 49 23 46 30");
-	s_Signatures[Offset::ConstructType] = Signature("E8 [ ?? ?? ?? ?? ] 49 89 04 1E");
+	s_Signatures[Offset::ConstructType] = Signature("48 89 5C 24 10 48 89 74 24 18 57 48 83 EC 20 48 8B F9 48 8D 35 ?? ?? ?? ?? 48 89 74 24 30 FF 15");
 	s_Signatures[Offset::DestroyEntity] = Signature("48 89 5C 24 08 57 48 83 EC 20 48 8B DA 48 8B 51 58");
 	s_Signatures[Offset::DialogueAnimationUpdate] = Signature("48 8B C4 53 56 57 41 54 41 55 41 56 41 57 48 81 EC C0 01 00 00");
 	s_Signatures[Offset::DirectCommandQueue] = Signature("48 8B 05 [ ?? ?? ?? ?? ] 48 8B 48 10 48 8B 01 FF 90");
-	s_Signatures[Offset::EcsTypeInfo] = Signature("48 8D 4C 24 60 E8 ?? ?? ?? ?? 48 8B 35 [ ?? ?? ?? ?? ] 48 85 F6");
+	s_Signatures[Offset::EcsTypeInfo] = Signature("48 8B 35 [ ?? ?? ?? ?? ] 48 85 F6 0F 84 ?? ?? ?? ?? 0F 1F 84 00 00 00 00 00 48 8D 56 10 48 8D 4D ?? E8 ?? ?? ?? ?? 48 8B F8 C5 F8 10 76 20 48 8B 4E 08");
 	s_Signatures[Offset::FindGidInMap] = Signature("E8 [ ?? ?? ?? ?? ] 48 8B 44 24 20 41 B9 FF FF 00 00");
 	s_Signatures[Offset::GameServerWorld] = Signature("48 8B 05 [ ?? ?? ?? ?? ] 48 8B 40 08 48 8B 80 E0 80 05 00");
 	s_Signatures[Offset::GameWindow] = Signature("4C 8B 35 [ ?? ?? ?? ?? ] FF 15");
@@ -144,7 +144,7 @@ bool Offsets::ScanOffsets()
 	s_Signatures[Offset::GetTypeInfo] = Signature("40 53 55 56 57 41 54 41 55 41 56 41 57 48 81 EC D8");
 	s_Signatures[Offset::GlobalIdMap] = Signature("48 89 1D [ ?? ?? ?? ?? ] 48 89 53 48");
 	s_Signatures[Offset::GlobalParams] = Signature("48 89 05 [ ?? ?? ?? ?? ] 48 8B 0D ?? ?? ?? ?? 48 C1 E1 04");
-	s_Signatures[Offset::HotsampleFix] = Signature("48 8D 99 C8 05 00 00", -0x28);
+	s_Signatures[Offset::HotsampleFix] = Signature("48 8D 99 D0 05 00 00", -0x2F);
 	s_Signatures[Offset::InputSystem] = Signature("48 8B 15 [ ?? ?? ?? ?? ] 4C 8D 4D E7 4C 89 75 E7 4C 8D 45 A7");
 	s_Signatures[Offset::ObjectStreamProcessorCtor] = Signature("48 83 EC 48 33 C0 4C 8D");
 	s_Signatures[Offset::PuppetUpdate] = Signature("48 8B C4 48 89 70 20 41 56");
@@ -251,12 +251,7 @@ bool Offsets::ScanOffsets()
 			Log::Error("Could not find Offset::%s", OffsetToString(static_cast<Offset>(i)));
 		}
 	}
-	// Camera-only fallback: allow NorthLit to start when optional ECS/renderer/hotsample signatures moved.
-	// CameraTransform + CameraUpdate + GlobalParams are the minimum required by the current free-camera path.
-	const bool cameraCoreFound = s_Signatures[Offset::CameraTransform].Result &&
-		s_Signatures[Offset::CameraUpdate].Result &&
-		s_Signatures[Offset::GlobalParams].Result;
-	return cameraCoreFound;
+	return foundAll;
 }
 
 long long GetOffset(Offset eOffset)
