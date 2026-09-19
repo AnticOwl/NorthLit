@@ -129,7 +129,7 @@ constexpr const char* OffsetToString(Offset offset)
 bool Offsets::ScanOffsets()
 {
 	s_Signatures[Offset::AnimationMixerPreUpdate] = Signature("48 81 EC 98 01 00 00 4C 8B 01");
-	s_Signatures[Offset::CameraTransform] = Signature("E8 ?? ?? ?? ?? C5 FC 10 45 80 C5 FC 11 05 [ ?? ?? ?? ?? ]");
+	s_Signatures[Offset::CameraTransform] = Signature("C5 7A 11 0D ?? ?? ?? ?? C5 FC 10 45 80 C5 FC 11 05 [ ?? ?? ?? ?? ] C5 F8 10 45 A0 C5 F9 7F 05");
 	s_Signatures[Offset::CameraUpdate] = Signature("4C 8B DC 53 56 57 41 56");
 	s_Signatures[Offset::CityHash] = Signature("49 8B C8 E8 [ ?? ?? ?? ?? ] 49 23 46 30");
 	s_Signatures[Offset::ConstructType] = Signature("E8 [ ?? ?? ?? ?? ] 49 89 04 1E");
@@ -251,7 +251,12 @@ bool Offsets::ScanOffsets()
 			Log::Error("Could not find Offset::%s", OffsetToString(static_cast<Offset>(i)));
 		}
 	}
-	return foundAll;
+	// Camera-only fallback: allow NorthLit to start when optional ECS/renderer/hotsample signatures moved.
+	// CameraTransform + CameraUpdate + GlobalParams are the minimum required by the current free-camera path.
+	const bool cameraCoreFound = s_Signatures[Offset::CameraTransform].Result &&
+		s_Signatures[Offset::CameraUpdate].Result &&
+		s_Signatures[Offset::GlobalParams].Result;
+	return cameraCoreFound;
 }
 
 long long GetOffset(Offset eOffset)
