@@ -11,21 +11,18 @@ import Log;
 
 FILE* pfstdout = NULL;
 FILE* pfstdin = NULL;
+FILE* pfileout = NULL;
 HANDLE hstdin = NULL;
 HANDLE hstdout = NULL;
 
 std::mutex logMutex;
 
 
-static void PrintTimeStamp()
+static std::string MakeTimeStamp()
 {
     auto now = std::chrono::system_clock::now();
     auto local_time = std::chrono::zoned_time(std::chrono::current_zone(), now);
-
-    std::string sTimeStamp = std::format("[{}] ", local_time);
-    SetConsoleTextAttribute(hstdout, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_INTENSITY);
-    printf(sTimeStamp.c_str());
-    //fprintf(pfileout, sTimeStamp.c_str());
+    return std::format("[{}] ", local_time);
 }
 
 static void PrintMessage(WORD color, const char* type, const char* format, va_list args)
@@ -33,12 +30,29 @@ static void PrintMessage(WORD color, const char* type, const char* format, va_li
     // Block other threads from writing at the same time
     std::lock_guard<std::mutex> lock(logMutex);
 
-    PrintTimeStamp();
+    const std::string timeStamp = MakeTimeStamp();
+    const std::string finalFormat = std::string(type) + format + "\n";
+
+    SetConsoleTextAttribute(hstdout, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_INTENSITY);
+    fputs(timeStamp.c_str(), stdout);
     SetConsoleTextAttribute(hstdout, color);
-    std::string finalFormat = std::string(type) + format + "\n";
-    vfprintf(stdout, finalFormat.c_str(), args);
-    //vfprintf(pfileout, finalFormat.c_str(), args);
-    //fflush(pfileout);
+
+    va_list consoleArgs;
+    va_copy(consoleArgs, args);
+    vfprintf(stdout, finalFormat.c_str(), consoleArgs);
+    va_end(consoleArgs);
+    fflush(stdout);
+
+    if (pfileout)
+    {
+        fputs(timeStamp.c_str(), pfileout);
+        va_list fileArgs;
+        va_copy(fileArgs, args);
+        vfprintf(pfileout, finalFormat.c_str(), fileArgs);
+        va_end(fileArgs);
+        // Flush every line so the last successful init step survives a hard game crash.
+        fflush(pfileout);
+    }
 }
 
 void Log::Init()
@@ -49,12 +63,32 @@ void Log::Init()
     freopen_s(&pfstdin, "CONIN$", "r", stdin);
     hstdin = GetStdHandle(STD_INPUT_HANDLE);
     hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    // Persist the current run beside AlanWake2.exe so startup crashes do not erase diagnostics.
+    char exePath[MAX_PATH]{};
+    if (GetModuleFileNameA(nullptr, exePath, MAX_PATH))
+    {
+        std::string logPath(exePath);
+        const size_t slash = logPath.find_last_of("\\/");
+        if (slash != std::string::npos)
+            logPath.resize(slash + 1);
+        else
+            logPath.clear();
+        logPath += "NorthLit.log";
+        fopen_s(&pfileout, logPath.c_str(), "w");
+    }
 #endif
 }
 
 void Log::Shutdown()
 {
 #if LOG_ENABLE
+    if (pfileout)
+    {
+        fflush(pfileout);
+        fclose(pfileout);
+        pfileout = NULL;
+    }
     fclose(pfstdin);
     fclose(pfstdout);
     CloseHandle(hstdin);
