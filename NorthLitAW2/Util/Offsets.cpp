@@ -236,21 +236,29 @@ bool Offsets::ScanOffsets()
 		if (t.joinable()) t.join();
 
 	bool foundAll = true;
+	int foundCount = 0;
+	int missingCount = 0;
 	for (int i = 0; i < s_Signatures.size(); ++i)
 	{
 		const Signature& sig = s_Signatures[i];
 		if (sig.Result)
 		{
-			Log::Write("Offset::%s 0x%I64X - AlanWake2.exe + 0x%I64X", OffsetToString(static_cast<Offset>(i)), sig.Result, sig.Result - Northlight::ModuleHandle());
+			foundCount++;
 			if (s_checkOffsetCount && sig.ResultCount > 1)
-				Log::Warning("Offset::%s has %d results", OffsetToString(static_cast<Offset>(i)), sig.ResultCount);
+				Log::Warning("[Offsets] %s has %d results", OffsetToString(static_cast<Offset>(i)), sig.ResultCount);
 		}
 		else
 		{
 			foundAll = false;
-			Log::Error("Could not find Offset::%s", OffsetToString(static_cast<Offset>(i)));
+			missingCount++;
+			// RendererInterface is intentionally unused by the DXGI bootstrap renderer.
+			if (static_cast<Offset>(i) != Offset::RendererInterface)
+				Log::Warning("[Offsets] Missing %s", OffsetToString(static_cast<Offset>(i)));
 		}
 	}
+
+	Log::Write("[Offsets] %d found, %d missing", foundCount, missingCount);
+
 	// RendererInterface is optional while the post-update renderer global is being re-located.
 	// Keep the validated camera core available instead of accepting false-positive renderer matches.
 	const bool cameraCoreFound = s_Signatures[Offset::CameraUpdate].Result &&
