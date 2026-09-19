@@ -493,76 +493,55 @@ namespace NorthLit
 	{
 		InitializeMinHook();
 		Log::Init();
-		Log::Write("[NorthLit] Oispa kahvetta");
-		Log::Write("Initializing");
+		Log::Write("[NorthLit] Initializing");
 		ReadConfig();
 
-		Log::Write("[Init] ScanOffsets begin");
-		if (!Offsets::ScanOffsets()) return false;
-		Log::Write("[Init] ScanOffsets OK");
+		if (!Offsets::ScanOffsets())
+		{
+			Log::Error("[Init] Required offsets unavailable");
+			return false;
+		}
 
-		Log::Write("[Init] UpdateGlobalParameters begin");
 		UpdateGlobalParameters();
-		Log::Write("[Init] UpdateGlobalParameters OK");
 
-		Log::Write("[Init] UI Init begin");
 		if (!UI::GetInstance().Init())
 		{
-			Log::Error("[Init] UI Init failed");
+			Log::Error("[Init] UI initialization failed");
 			return false;
 		}
-		Log::Write("[Init] UI Init OK");
 
-		Log::Write("[Init] Renderer DXGI bootstrap begin");
 		if (!Renderer::GetInstance().Init())
 		{
-			Log::Error("[Init] Renderer DXGI bootstrap failed");
+			Log::Error("[Init] Renderer initialization failed");
 			return false;
 		}
-		Log::Write("[Init] Renderer DXGI bootstrap OK");
 		s_UiAvailable = true;
 
-		Log::Write("[Init] Animation Init begin");
 		Animation::Initialize();
 		s_AnimationAvailable = true;
-		Log::Write("[Init] Animation Init OK");
-
-		Log::Write("[Init] Dialogues Init begin");
 		Dialogues::Initialize();
-		Log::Write("[Init] Dialogues Init OK");
 
-		Log::Write("[Init] Lights Init begin");
 		Lights::SetCameraMatrixProvider(&GetActiveCameraMatrixForLights);
 		Lights::Initialize();
-		Log::Write("[Init] Lights Init OK");
 
 #if ENABLE_DEV_MENU
-		Log::Write("[Init] Dev Init begin");
 		Dev::Initialize();
-		Log::Write("[Init] Dev Init OK");
 #endif
 
 		UI::GetInstance().RegisterDrawCb([=] {OnDrawUI(); });
 		UI::GetInstance().SetVisible(true);
-		Log::Write("[Init] UI callback OK");
 
-		Log::Write("[Init] Camera hook begin");
 		void* pCameraUpdateFunc = (void*)GetOffset(Offset::CameraUpdate);
-		if (!pCameraUpdateFunc) return false;
+		if (!pCameraUpdateFunc)
+		{
+			Log::Error("[Init] CameraUpdate unavailable");
+			return false;
+		}
 		CreateHook(pCameraUpdateFunc, hCameraUpdate, &oCameraUpdate);
-		Log::Write("[Init] Camera hook OK");
 
-		// September 2026 AW2 update: the remapped HotsampleFix signature has not yet
-		// been semantically validated. Hooking the wrong internal resolution routine
-		// can produce a GPU device fault only when a resize occurs. Leave the engine
-		// resolution path untouched for now; the DXGI ResizeBuffers hook still rebuilds
-		// the ImGui backend around native/external hotsampling.
-		Log::Warning("[Compatibility] Internal HotsampleFix hook disabled for validation");
-
-		Log::Write("[Init] IGCS connector begin");
 		TryConnectIgcsConnector();
-		Log::Write("[Init] IGCS connector OK");
-		Log::Write("[Init] COMPLETE");
+
+		Log::Success("[NorthLit] Ready - UI, camera, lights, animation, dialogues and IGCS");
 		return true;
 	}
 
