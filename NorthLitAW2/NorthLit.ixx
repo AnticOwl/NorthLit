@@ -489,32 +489,62 @@ namespace NorthLit
 		Log::Write("[NorthLit] Oispa kahvetta");
 		Log::Write("Initializing");
 		ReadConfig();
-		if (!Offsets::ScanOffsets()) return false;
 
+		Log::Write("[Init] ScanOffsets begin");
+		if (!Offsets::ScanOffsets()) return false;
+		Log::Write("[Init] ScanOffsets OK");
+
+		Log::Write("[Init] UpdateGlobalParameters begin");
 		UpdateGlobalParameters();
+		Log::Write("[Init] UpdateGlobalParameters OK");
+
+		Log::Write("[Init] UI Init begin");
 		UI::GetInstance().Init();
+		Log::Write("[Init] UI Init OK");
+
+		Log::Write("[Init] Renderer Init begin");
 		Renderer::GetInstance().Init();
+		Log::Write("[Init] Renderer Init OK");
 		s_UiAvailable = true;
 
+		Log::Write("[Init] Animation Init begin");
 		Animation::Initialize();
+		Log::Write("[Init] Animation Init OK");
 		s_AnimationAvailable = true;
+
+		Log::Write("[Init] Dialogues Init begin");
 		Dialogues::Initialize();
+		Log::Write("[Init] Dialogues Init OK");
+
+		Log::Write("[Init] Lights Init begin");
 		Lights::Initialize();
+		Log::Write("[Init] Lights Init OK");
 
 #if ENABLE_DEV_MENU
+		Log::Write("[Init] Dev Init begin");
 		Dev::Initialize();
+		Log::Write("[Init] Dev Init OK");
 #endif
 
+		Log::Write("[Init] UI callback begin");
 		UI::GetInstance().RegisterDrawCb([=] {OnDrawUI(); });
 		UI::GetInstance().SetVisible(true);
+		Log::Write("[Init] UI callback OK");
 
+		Log::Write("[Init] Camera hook begin");
 		void* pCameraUpdateFunc = (void*)GetOffset(Offset::CameraUpdate);
 		CreateHook(pCameraUpdateFunc, hCameraUpdate, &oCameraUpdate);
+		Log::Write("[Init] Camera hook OK");
 
+		Log::Write("[Init] Hotsample hook begin");
 		void* pResolutionChange = (void*)GetOffset(Offset::HotsampleFix);
 		CreateHook(pResolutionChange, hResolutionChange, &oResolutionChange);
+		Log::Write("[Init] Hotsample hook OK");
 
+		Log::Write("[Init] IGCS connector begin");
 		TryConnectIgcsConnector();
+		Log::Write("[Init] IGCS connector OK");
+		Log::Write("[Init] COMPLETE");
 		return true;
 	}
 
