@@ -22,6 +22,9 @@ typedef void (WINAPI* tID3D12CommandQueue_ExecuteCommandLists)(ID3D12CommandQueu
 tIDXGISwapChain_Present oIDXGISwapChain_Present = 0;
 tIDXGISwapChain_ResizeBuffers oIDXGISwapChain_ResizeBuffers = 0;
 tID3D12CommandQueue_ExecuteCommandLists oID3D12CommandQueue_ExecuteCommandLists = 0;
+static void* s_PresentTarget = nullptr;
+static void* s_ResizeBuffersTarget = nullptr;
+static bool s_Dx12Ready = false;
 
 HRESULT WINAPI Renderer::hPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags)
 {
@@ -58,12 +61,10 @@ bool Renderer::Init()
 {
 	m_LastSignaledFenceValue = 0;
 	m_FrameIndex = 0;
-
-	if (!InitDx12Objects())
-	{
-		Log::Error("[Renderer] Failed to initialize DX12 objects");
-		return false;
-	}
+	m_CommandQueue = nullptr;
+	m_SwapChain = nullptr;
+	m_Device = nullptr;
+	s_Dx12Ready = false;
 
 	m_FenceEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 	if (m_FenceEvent == NULL)
@@ -72,37 +73,138 @@ bool Renderer::Init()
 		return false;
 	}
 
-	OverrideVTableFunction(m_SwapChain, 8, hPresent, &oIDXGISwapChain_Present);
-	OverrideVTableFunction(m_SwapChain, 13, hResizeBuffers, &oIDXGISwapChain_ResizeBuffers);
+	// Bootstrap DX12 without relying on Northlight::RendererInterface.
+	// A tiny temporary device/queue/swapchain gives us the shared DXGI Present/ResizeBuffers
+	// entry points. MinHook then catches the real AW2 swapchain on its next Present call.
+	ComPtr<ID3D12Device> bootstrapDevice;
+	if (FAILED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(bootstrapDevice.GetAddressOf()))))
+	{
+		Log::Error("[Renderer] Bootstrap D3D12CreateDevice failed");
+		return false;
+	}
 
+	ComPtr<ID3D12CommandQueue> bootstrapQueue;
+	D3D12_COMMAND_QUEUE_DESC queueDesc{};
+	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+	if (FAILED(bootstrapDevice->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(bootstrapQueue.GetAddressOf()))))
+	{
+		Log::Error("[Renderer] Bootstrap command queue failed");
+		return false;
+	}
+
+	// Temporarily hook ExecuteCommandLists while the game keeps rendering so we can
+	// capture AW2's real direct command queue before the swapchain bootstrap completes.
+	OverrideVTableFunction(bootstrapQueue.Get(), 10, hExecuteCommandLists, &oID3D12CommandQueue_ExecuteCommandLists);
+	Sleep(100);
+	OverrideVTableFunction(bootstrapQueue.Get(), 10, oID3D12CommandQueue_ExecuteCommandLists, nullptr);
+
+	ComPtr<IDXGIFactory4> factory;
+	if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf()))))
+	{
+		Log::Error("[Renderer] Bootstrap DXGI factory failed");
+		return false;
+	}
+
+	WNDCLASSEXW wc{};
+	wc.cbSize = sizeof(wc);
+	wc.lpfnWndProc = DefWindowProcW;
+	wc.hInstance = GetModuleHandleW(nullptr);
+	wc.lpszClassName = L"NorthLitDx12Bootstrap";
+	RegisterClassExW(&wc);
+	HWND bootstrapWindow = CreateWindowExW(0, wc.lpszClassName, L"", WS_OVERLAPPEDWINDOW,
+		0, 0, 2, 2, nullptr, nullptr, wc.hInstance, nullptr);
+	if (!bootstrapWindow)
+	{
+		Log::Error("[Renderer] Bootstrap window failed");
+		return false;
+	}
+
+	DXGI_SWAP_CHAIN_DESC1 scDesc{};
+	scDesc.Width = 2;
+	scDesc.Height = 2;
+	scDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	scDesc.SampleDesc.Count = 1;
+	scDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	scDesc.BufferCount = 2;
+	scDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+
+	ComPtr<IDXGISwapChain1> bootstrapSwapChain;
+	HRESULT scResult = factory->CreateSwapChainForHwnd(bootstrapQueue.Get(), bootstrapWindow, &scDesc, nullptr, nullptr, bootstrapSwapChain.GetAddressOf());
+	if (FAILED(scResult))
+	{
+		DestroyWindow(bootstrapWindow);
+		UnregisterClassW(wc.lpszClassName, wc.hInstance);
+		Log::Error("[Renderer] Bootstrap swapchain failed");
+		return false;
+	}
+
+	void** vtable = *reinterpret_cast<void***>(bootstrapSwapChain.Get());
+	s_PresentTarget = vtable[8];
+	s_ResizeBuffersTarget = vtable[13];
+
+	CreateHook(s_PresentTarget, hPresent, &oIDXGISwapChain_Present);
+	CreateHook(s_ResizeBuffersTarget, hResizeBuffers, &oIDXGISwapChain_ResizeBuffers);
+
+	bootstrapSwapChain.Reset();
+	DestroyWindow(bootstrapWindow);
+	UnregisterClassW(wc.lpszClassName, wc.hInstance);
+
+	Log::Write("[Renderer] DXGI bootstrap hooks installed");
 	return true;
 }
 
 void Renderer::Shutdown()
 {
-	OverrideVTableFunction(m_SwapChain, 8, oIDXGISwapChain_Present, nullptr);
-	OverrideVTableFunction(m_SwapChain, 13, oIDXGISwapChain_ResizeBuffers, nullptr);
+	if (s_PresentTarget) RemoveHook(s_PresentTarget);
+	if (s_ResizeBuffersTarget) RemoveHook(s_ResizeBuffersTarget);
 
-	WaitForLastFrame();
-	ImGui_ImplDX12_Shutdown();
-	ReleaseDx12Objects();
+	if (s_Dx12Ready)
+	{
+		WaitForLastFrame();
+		ImGui_ImplDX12_Shutdown();
+		ReleaseDx12Objects();
+		s_Dx12Ready = false;
+	}
 
-	CloseHandle(m_FenceEvent);
+	if (m_FenceEvent)
+	{
+		CloseHandle(m_FenceEvent);
+		m_FenceEvent = nullptr;
+	}
 	Log::Success("Renderer shutdown");
 }
 
 HRESULT Renderer::OnPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags)
 {
-	if (pSwapChain != m_SwapChain)
+	if (!s_Dx12Ready)
 	{
-		static bool LogMultipleSwapchain = true;
-		if (LogMultipleSwapchain)
+		ComPtr<IDXGISwapChain3> candidate;
+		if (SUCCEEDED(pSwapChain->QueryInterface(IID_PPV_ARGS(candidate.GetAddressOf()))) && candidate)
 		{
-			Log::Warning("Multiple swapchains in flight!");
-			LogMultipleSwapchain = false;
+			ComPtr<ID3D12Device> candidateDevice;
+			if (SUCCEEDED(candidate->GetDevice(IID_PPV_ARGS(candidateDevice.GetAddressOf()))) && candidateDevice)
+			{
+				m_SwapChain = candidate.Detach();
+				if (InitDx12Objects())
+				{
+					s_Dx12Ready = true;
+					Log::Success("[Renderer] Captured AW2 DX12 swapchain");
+				}
+				else
+				{
+					Log::Error("[Renderer] Failed to initialize from captured swapchain");
+					m_SwapChain->Release();
+					m_SwapChain = nullptr;
+				}
+			}
 		}
-		return oIDXGISwapChain_Present(pSwapChain, SyncInterval, Flags);
+
+		if (!s_Dx12Ready)
+			return oIDXGISwapChain_Present(pSwapChain, SyncInterval, Flags);
 	}
+
+	if (pSwapChain != m_SwapChain)
+		return oIDXGISwapChain_Present(pSwapChain, SyncInterval, Flags);
 
 	UI& ui = UI::GetInstance();
 	const bool isUiVisible = ui.IsVisible();
@@ -160,6 +262,9 @@ HRESULT Renderer::OnPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
 
 HRESULT Renderer::OnResizeBuffers(IDXGISwapChain* pSwapChain, UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT SwapChainFlags)
 {
+	if (!s_Dx12Ready || pSwapChain != m_SwapChain)
+		return oIDXGISwapChain_ResizeBuffers(pSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
+
 	Log::Write("Renderer::ResizeBuffers");
 
 	WaitForLastFrame();
@@ -175,18 +280,13 @@ HRESULT Renderer::OnResizeBuffers(IDXGISwapChain* pSwapChain, UINT BufferCount, 
 
 bool Renderer::InitDx12Objects()
 {
-	// Get swapchain
+	if (!m_SwapChain)
 	{
-		IDXGISwapChain* pSwapChain = Northlight::rend::GetSwapChain();
-		pSwapChain->QueryInterface(IID_PPV_ARGS(&m_SwapChain));
-		if (!m_SwapChain)
-		{
-			Log::Error("[Renderer] Could not get IDXGISwapChain3");
-			return false;
-		}
-
-		Log::Write("pSwapChain 0x%I64X", pSwapChain);
+		Log::Error("[Renderer] No captured IDXGISwapChain3");
+		return false;
 	}
+
+	Log::Write("pSwapChain 0x%I64X", m_SwapChain);
 
 	{
 		ComPtr<ID3D12Device> pD3D12Device;
@@ -199,71 +299,33 @@ bool Renderer::InitDx12Objects()
 		}
 	}
 
-	// Create temporary command queue to hook ExecuteCommandLists and get the correct command queue
+	// Select the AW2 direct queue captured during bootstrap.
+	if (m_CommandQueues.size() == 1)
 	{
-		
-		m_CommandQueue = nullptr;
-
-		ComPtr<ID3D12CommandQueue> tmpCommandQueue;
-
-		D3D12_COMMAND_QUEUE_DESC desc = {};
-		desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-		desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-		desc.NodeMask = 1;
-		if (m_Device->CreateCommandQueue(&desc, IID_PPV_ARGS(tmpCommandQueue.GetAddressOf())) != S_OK)
+		m_CommandQueue = m_CommandQueues[0];
+	}
+	else if (m_CommandQueues.size() > 1)
+	{
+		for (ID3D12CommandQueue* queue : m_CommandQueues)
 		{
-			Log::Error("Could not create temporary command queue");
-			return false;
-		}
-
-		OverrideVTableFunction(tmpCommandQueue.Get(), 10, hExecuteCommandLists, &oID3D12CommandQueue_ExecuteCommandLists);
-
-		//Sleep to capture command queues
-		Sleep(100);
-
-		OverrideVTableFunction(tmpCommandQueue.Get(), 10, oID3D12CommandQueue_ExecuteCommandLists, nullptr);
-
-		if (m_CommandQueues.empty())
-		{
-			Log::Warning("Could not capture any direct command queue, using Northlight direct command queue");
-			m_CommandQueue = Northlight::rend::CommandQueue::GetDirectCommandQueue()->pDxCommandQueue;
-		}
-		else if (m_CommandQueues.size() > 1)
-		{
-			Log::Warning("Multiple (%d) direct command queues to choose from", m_CommandQueues.size());
-			Log::Warning("TmpCommandQueue VTable 0x%I64X", *(__int64*)tmpCommandQueue.Get());
-
-			for (ID3D12CommandQueue* queue : m_CommandQueues)
+			for (int i = 0; i < 0x200; i += 8)
 			{
-				Log::Warning("\tCommandQueue 0x%I64X - VTable 0x%I64X", queue, *(__int64*)queue);
-			}
-
-			for (ID3D12CommandQueue* queue : m_CommandQueues)
-			{
-				for (int i = 0; i < 0x200; i += 8)
+				if (*(__int64*)((__int64)m_SwapChain + i) == (__int64)queue)
 				{
-					if (*(__int64*)((__int64)m_SwapChain + i) == (__int64)queue)
-					{
-						Log::Write("Found command queue 0x%I64X reference at m_SwapChain + 0x%X", queue, i);
-						m_CommandQueue = queue;
-						break;
-					}
-				}
-				
-				if (m_CommandQueue)
+					Log::Write("Found command queue 0x%I64X reference at m_SwapChain + 0x%X", queue, i);
+					m_CommandQueue = queue;
 					break;
+				}
 			}
+			if (m_CommandQueue) break;
+		}
+	}
 
-			if (!m_CommandQueue)
-			{
-				Log::Warning("Couldn't find queue close to swapchain, using first queue");
-				m_CommandQueue = m_CommandQueues[0];
-			}
-		}
-		else
-		{
-			m_CommandQueue = m_CommandQueues[0];
-		}
+	if (!m_CommandQueue)
+	{
+		Log::Warning("Could not identify captured queue, using Northlight direct command queue");
+		auto* queueWrapper = Northlight::rend::CommandQueue::GetDirectCommandQueue();
+		if (queueWrapper) m_CommandQueue = queueWrapper->pDxCommandQueue;
 	}
 
 	Log::Write("m_CommandQueue 0x%I64X", m_CommandQueue);
