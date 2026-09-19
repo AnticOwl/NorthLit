@@ -42,6 +42,8 @@ namespace NorthLit
 	static float s_RotationSpeed = 0.01f;
 
 	static bool s_HotsampleFixEnabled = true;
+	static bool s_UiAvailable = false;
+	static bool s_AnimationAvailable = false;
 	static DWORD s_HotkeyUIToggle = VK_F5;
 
 	static bool s_IgcsSessionActive = false;
@@ -458,20 +460,58 @@ namespace NorthLit
 		ReadConfig();
 		if (!Offsets::ScanOffsets()) return false;
 		UpdateGlobalParameters();
-		UI::GetInstance().Init();
-		Renderer::GetInstance().Init();
-		Animation::Initialize();
-		Dialogues::Initialize();
-		Lights::Initialize();
+
+		// The September 2026 AW2 update moved several optional NorthLit signatures.
+		// Keep the free camera usable even while those features are being re-mapped.
+		if (GetOffset(Offset::RendererInterface))
+		{
+			UI::GetInstance().Init();
+			Renderer::GetInstance().Init();
+			UI::GetInstance().RegisterDrawCb([=] {OnDrawUI(); });
+			UI::GetInstance().SetVisible(true);
+			s_UiAvailable = true;
+		}
+		else
+		{
+			Log::Warning("[Compatibility] RendererInterface unavailable - overlay UI disabled");
+		}
+
+		if (GetOffset(Offset::AnimationMixerPreUpdate))
+		{
+			Animation::Initialize();
+			s_AnimationAvailable = true;
+		}
+		if (GetOffset(Offset::DialogueAnimationUpdate))
+			Dialogues::Initialize();
+
+		if (GetOffset(Offset::ConstructType) &&
+			GetOffset(Offset::EcsTypeInfo) &&
+			GetOffset(Offset::FindGidInMap) &&
+			GetOffset(Offset::GameServerWorld))
+		{
+			Lights::Initialize();
+		}
+		else
+		{
+			Log::Warning("[Compatibility] ECS/light signatures unavailable - light tools disabled");
+		}
+
 #if ENABLE_DEV_MENU
 		Dev::Initialize();
 #endif
-		UI::GetInstance().RegisterDrawCb([=] {OnDrawUI(); });
-		UI::GetInstance().SetVisible(true);
 		void* pCameraUpdateFunc = (void*)GetOffset(Offset::CameraUpdate);
 		CreateHook(pCameraUpdateFunc, hCameraUpdate, &oCameraUpdate);
-		void* pResolutionChange = (void*)(GetOffset(Offset::HotsampleFix));
-		CreateHook(pResolutionChange, hResolutionChange, &oResolutionChange);
+
+		if (GetOffset(Offset::HotsampleFix))
+		{
+			void* pResolutionChange = (void*)(GetOffset(Offset::HotsampleFix));
+			CreateHook(pResolutionChange, hResolutionChange, &oResolutionChange);
+		}
+		else
+		{
+			Log::Warning("[Compatibility] HotsampleFix unavailable - hotsample correction disabled");
+		}
+
 		TryConnectIgcsConnector();
 		return true;
 	}
@@ -487,7 +527,7 @@ namespace NorthLit
 			const auto now = std::chrono::steady_clock::now();
 			const double dt = std::chrono::duration<double>(now - lastUpdate).count();
 			lastUpdate = now;
-			if ((s_HotkeyUIToggle >> 8 == 0 || GetAsyncKeyState(s_HotkeyUIToggle >> 8) & 0x8000) && GetAsyncKeyState(s_HotkeyUIToggle % 0xFF) & 0x8000)
+			if (s_UiAvailable && (s_HotkeyUIToggle >> 8 == 0 || GetAsyncKeyState(s_HotkeyUIToggle >> 8) & 0x8000) && GetAsyncKeyState(s_HotkeyUIToggle % 0xFF) & 0x8000)
 			{
 				while ((s_HotkeyUIToggle >> 8 == 0 || GetAsyncKeyState(s_HotkeyUIToggle >> 8) & 0x8000) && GetAsyncKeyState(s_HotkeyUIToggle % 0xFF) & 0x8000)
 					std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -504,7 +544,7 @@ namespace NorthLit
 				TryConnectIgcsConnector();
 			}
 			UpdateIgcsData();
-			Animation::Update();
+			if (s_AnimationAvailable) Animation::Update();
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 		UI::GetInstance().SetVisible(false);
