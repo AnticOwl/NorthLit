@@ -491,24 +491,29 @@ namespace NorthLit
 		ReadConfig();
 		if (!Offsets::ScanOffsets()) return false;
 
-		// Temporary September 2026 AW2 compatibility path:
-		// keep startup camera-only until every moved optional signature is validated.
-		// Do NOT initialize renderer/UI/ECS/animation/dialogue/light systems from
-		// unverified remapped globals, because a false-positive pointer crashes at injection.
-		s_UiAvailable = false;
-		s_AnimationAvailable = false;
-		Log::Warning("[Compatibility] Camera-only startup enabled");
-		Log::Warning("[Compatibility] Overlay, hotsample, animation, dialogues and lights are temporarily disabled");
+		UpdateGlobalParameters();
+		UI::GetInstance().Init();
+		Renderer::GetInstance().Init();
+		s_UiAvailable = true;
+
+		Animation::Initialize();
+		s_AnimationAvailable = true;
+		Dialogues::Initialize();
+		Lights::Initialize();
+
+#if ENABLE_DEV_MENU
+		Dev::Initialize();
+#endif
+
+		UI::GetInstance().RegisterDrawCb([=] {OnDrawUI(); });
+		UI::GetInstance().SetVisible(true);
 
 		void* pCameraUpdateFunc = (void*)GetOffset(Offset::CameraUpdate);
-		if (!pCameraUpdateFunc)
-		{
-			Log::Error("[Compatibility] CameraUpdate unavailable");
-			return false;
-		}
 		CreateHook(pCameraUpdateFunc, hCameraUpdate, &oCameraUpdate);
 
-		// HotsampleFix stays disabled until its new routine is validated.
+		void* pResolutionChange = (void*)GetOffset(Offset::HotsampleFix);
+		CreateHook(pResolutionChange, hResolutionChange, &oResolutionChange);
+
 		TryConnectIgcsConnector();
 		return true;
 	}
