@@ -514,20 +514,45 @@ namespace NorthLit
 		}
 		Log::Write("[Init] Renderer DXGI bootstrap OK");
 		s_UiAvailable = true;
-		s_AnimationAvailable = false;
+
+		Log::Write("[Init] Animation Init begin");
+		Animation::Initialize();
+		s_AnimationAvailable = true;
+		Log::Write("[Init] Animation Init OK");
+
+		Log::Write("[Init] Dialogues Init begin");
+		Dialogues::Initialize();
+		Log::Write("[Init] Dialogues Init OK");
+
+		Log::Write("[Init] Lights Init begin");
+		Lights::Initialize();
+		Log::Write("[Init] Lights Init OK");
+
+#if ENABLE_DEV_MENU
+		Log::Write("[Init] Dev Init begin");
+		Dev::Initialize();
+		Log::Write("[Init] Dev Init OK");
+#endif
 
 		UI::GetInstance().RegisterDrawCb([=] {OnDrawUI(); });
 		UI::GetInstance().SetVisible(true);
 		Log::Write("[Init] UI callback OK");
-
-		// Keep the remaining post-update systems isolated until the new renderer path is validated.
-		Log::Warning("[Compatibility] Animation, dialogues, lights and hotsample hook temporarily disabled for UI validation");
 
 		Log::Write("[Init] Camera hook begin");
 		void* pCameraUpdateFunc = (void*)GetOffset(Offset::CameraUpdate);
 		if (!pCameraUpdateFunc) return false;
 		CreateHook(pCameraUpdateFunc, hCameraUpdate, &oCameraUpdate);
 		Log::Write("[Init] Camera hook OK");
+
+		Log::Write("[Init] Hotsample hook begin");
+		void* pResolutionChange = (void*)GetOffset(Offset::HotsampleFix);
+		if (!pResolutionChange)
+		{
+			Log::Error("[Init] HotsampleFix offset unavailable");
+			return false;
+		}
+		CreateHook(pResolutionChange, hResolutionChange, &oResolutionChange);
+		Log::Write("[Init] Hotsample hook OK");
 
 		Log::Write("[Init] IGCS connector begin");
 		TryConnectIgcsConnector();
