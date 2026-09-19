@@ -459,59 +459,25 @@ namespace NorthLit
 		Log::Write("Initializing");
 		ReadConfig();
 		if (!Offsets::ScanOffsets()) return false;
-		UpdateGlobalParameters();
 
-		// The September 2026 AW2 update moved several optional NorthLit signatures.
-		// Keep the free camera usable even while those features are being re-mapped.
-		if (GetOffset(Offset::RendererInterface))
-		{
-			UI::GetInstance().Init();
-			Renderer::GetInstance().Init();
-			UI::GetInstance().RegisterDrawCb([=] {OnDrawUI(); });
-			UI::GetInstance().SetVisible(true);
-			s_UiAvailable = true;
-		}
-		else
-		{
-			Log::Warning("[Compatibility] RendererInterface unavailable - overlay UI disabled");
-		}
+		// Temporary September 2026 AW2 compatibility path:
+		// keep startup camera-only until every moved optional signature is validated.
+		// Do NOT initialize renderer/UI/ECS/animation/dialogue/light systems from
+		// unverified remapped globals, because a false-positive pointer crashes at injection.
+		s_UiAvailable = false;
+		s_AnimationAvailable = false;
+		Log::Warning("[Compatibility] Camera-only startup enabled");
+		Log::Warning("[Compatibility] Overlay, hotsample, animation, dialogues and lights are temporarily disabled");
 
-		if (GetOffset(Offset::AnimationMixerPreUpdate))
-		{
-			Animation::Initialize();
-			s_AnimationAvailable = true;
-		}
-		if (GetOffset(Offset::DialogueAnimationUpdate))
-			Dialogues::Initialize();
-
-		if (GetOffset(Offset::ConstructType) &&
-			GetOffset(Offset::EcsTypeInfo) &&
-			GetOffset(Offset::FindGidInMap) &&
-			GetOffset(Offset::GameServerWorld))
-		{
-			Lights::Initialize();
-		}
-		else
-		{
-			Log::Warning("[Compatibility] ECS/light signatures unavailable - light tools disabled");
-		}
-
-#if ENABLE_DEV_MENU
-		Dev::Initialize();
-#endif
 		void* pCameraUpdateFunc = (void*)GetOffset(Offset::CameraUpdate);
+		if (!pCameraUpdateFunc)
+		{
+			Log::Error("[Compatibility] CameraUpdate unavailable");
+			return false;
+		}
 		CreateHook(pCameraUpdateFunc, hCameraUpdate, &oCameraUpdate);
 
-		if (GetOffset(Offset::HotsampleFix))
-		{
-			void* pResolutionChange = (void*)(GetOffset(Offset::HotsampleFix));
-			CreateHook(pResolutionChange, hResolutionChange, &oResolutionChange);
-		}
-		else
-		{
-			Log::Warning("[Compatibility] HotsampleFix unavailable - hotsample correction disabled");
-		}
-
+		// HotsampleFix stays disabled until its new routine is validated.
 		TryConnectIgcsConnector();
 		return true;
 	}
