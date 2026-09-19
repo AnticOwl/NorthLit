@@ -316,6 +316,8 @@ namespace NorthLit::Lights
 					if (light.EntityHandle == -1)
 					{
 						ImGui::Text("Waiting for entity handle...");
+						ImGui::End();
+						ImGui::PopID();
 						continue;
 					}
 				}
@@ -334,6 +336,8 @@ namespace NorthLit::Lights
 				if (!lightComponent || !spotlightComponent || !transformComponent1 || !transformComponent2)
 				{
 					ImGui::Text("Waiting for ECS components...");
+					ImGui::End();
+					ImGui::PopID();
 					continue;
 				}
 
@@ -500,6 +504,8 @@ namespace NorthLit::Lights
 			{
 				light.Delete = true;
 			}
+
+			ImGui::PopID();
 		}
 
 		ImGui::EndChild();
