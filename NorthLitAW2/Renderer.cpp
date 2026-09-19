@@ -27,6 +27,7 @@ tIDXGISwapChain_ResizeBuffers oIDXGISwapChain_ResizeBuffers = 0;
 tID3D12CommandQueue_ExecuteCommandLists oID3D12CommandQueue_ExecuteCommandLists = 0;
 static void* s_PresentTarget = nullptr;
 static void* s_ResizeBuffersTarget = nullptr;
+static void* s_ExecuteCommandListsTarget = nullptr;
 static bool s_Dx12Ready = false;
 
 HRESULT WINAPI Renderer::hPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags)
@@ -42,13 +43,13 @@ HRESULT WINAPI Renderer::hResizeBuffers(IDXGISwapChain* pSwapChain, UINT BufferC
 void WINAPI Renderer::hExecuteCommandLists(ID3D12CommandQueue* pCommandQueue, UINT NumCommandLists, ID3D12CommandList* const* ppCommandLists)
 {
 	Renderer& renderer = Renderer::GetInstance();
-	if (renderer.m_CommandQueue == nullptr)
+	D3D12_COMMAND_QUEUE_DESC desc = pCommandQueue->GetDesc();
+	if (desc.Type == D3D12_COMMAND_LIST_TYPE_DIRECT)
 	{
-		D3D12_COMMAND_QUEUE_DESC desc = pCommandQueue->GetDesc();
-		if (desc.Type == D3D12_COMMAND_LIST_TYPE_DIRECT)
-		{
-			renderer.RegisterCommandQueue(pCommandQueue);
-		}
+		// Keep the most recently used DIRECT queue. The queue executing immediately
+		// before Present is the one we want for overlay work on AW2's backbuffers.
+		renderer.RegisterCommandQueue(pCommandQueue);
+		renderer.m_CommandQueue = pCommandQueue;
 	}
 
 	return oID3D12CommandQueue_ExecuteCommandLists(pCommandQueue, NumCommandLists, ppCommandLists);
@@ -95,11 +96,12 @@ bool Renderer::Init()
 		return false;
 	}
 
-	// Temporarily hook ExecuteCommandLists while the game keeps rendering so we can
-	// capture AW2's real direct command queue before the swapchain bootstrap completes.
-	OverrideVTableFunction(bootstrapQueue.Get(), 10, hExecuteCommandLists, &oID3D12CommandQueue_ExecuteCommandLists);
-	Sleep(100);
-	OverrideVTableFunction(bootstrapQueue.Get(), 10, oID3D12CommandQueue_ExecuteCommandLists, nullptr);
+	// Hook the shared D3D12 ExecuteCommandLists entry point and keep it active until
+	// the real AW2 swapchain has been captured. This lets us pair Present with the
+	// actual DIRECT queue used by the game instead of guessing from an engine offset.
+	void** queueVtable = *reinterpret_cast<void***>(bootstrapQueue.Get());
+	s_ExecuteCommandListsTarget = queueVtable[10];
+	CreateHook(s_ExecuteCommandListsTarget, hExecuteCommandLists, &oID3D12CommandQueue_ExecuteCommandLists);
 
 	ComPtr<IDXGIFactory4> factory;
 	if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf()))))
@@ -160,6 +162,7 @@ void Renderer::Shutdown()
 {
 	if (s_PresentTarget) RemoveHook(s_PresentTarget);
 	if (s_ResizeBuffersTarget) RemoveHook(s_ResizeBuffersTarget);
+	if (s_ExecuteCommandListsTarget) RemoveHook(s_ExecuteCommandListsTarget);
 
 	if (s_Dx12Ready)
 	{
@@ -191,11 +194,17 @@ HRESULT Renderer::OnPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT 
 				if (InitDx12Objects())
 				{
 					s_Dx12Ready = true;
-					Log::Success("[Renderer] Captured AW2 DX12 swapchain");
+					if (s_ExecuteCommandListsTarget)
+					{
+						RemoveHook(s_ExecuteCommandListsTarget);
+						s_ExecuteCommandListsTarget = nullptr;
+					}
+					Log::Success("[Renderer] Captured AW2 DX12 swapchain + DIRECT queue");
 				}
 				else
 				{
-					Log::Error("[Renderer] Failed to initialize from captured swapchain");
+					// Most commonly this means Present arrived before we observed the game's
+					// DIRECT ExecuteCommandLists call. Keep the hook alive and retry next frame.
 					m_SwapChain->Release();
 					m_SwapChain = nullptr;
 				}
@@ -324,17 +333,10 @@ bool Renderer::InitDx12Objects()
 		}
 	}
 
-	if (!m_CommandQueue)
-	{
-		Log::Warning("Could not identify captured queue, using Northlight direct command queue");
-		auto* queueWrapper = Northlight::rend::CommandQueue::GetDirectCommandQueue();
-		if (queueWrapper) m_CommandQueue = queueWrapper->pDxCommandQueue;
-	}
-
 	Log::Write("m_CommandQueue 0x%I64X", m_CommandQueue);
 	if (!m_CommandQueue)
 	{
-		Log::Error("[Renderer] Could not get CommandQueue");
+		Log::Warning("[Renderer] AW2 DIRECT queue not captured yet; deferring DX12 overlay init");
 		return false;
 	}
 
