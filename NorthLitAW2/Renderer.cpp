@@ -277,26 +277,41 @@ HRESULT Renderer::OnResizeBuffers(IDXGISwapChain* pSwapChain, UINT BufferCount, 
 	if (!s_Dx12Ready || pSwapChain != m_SwapChain)
 		return oIDXGISwapChain_ResizeBuffers(pSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
 
-	Log::Write("Renderer::ResizeBuffers");
+	Log::Write("Renderer::ResizeBuffers %ux%u buffers=%u", Width, Height, BufferCount);
 
-	WaitForLastFrame();
-
-	// A DXGI resize/hotsample requires a complete DX12 backend rebuild.
-	// Calling ImGui_ImplDX12_Init() again while the backend is still alive
-	// triggers "Already initialized a renderer backend!".
-	ImGui_ImplDX12_Shutdown();
-	ReleaseDx12Objects();
-
-	HRESULT result = oIDXGISwapChain_ResizeBuffers(pSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
-
-	if (SUCCEEDED(result))
+	// Do not tear down backbuffers while commands using them may still be queued.
+	// Waiting only one frame-context is not sufficient during hotsampling because
+	// AW2 may have work outstanding on any of the three swapchain buffers.
+	if (m_CommandQueue && m_Fence && m_FenceEvent)
 	{
-		if (!InitDx12Objects())
+		const UINT64 idleFence = ++m_LastSignaledFenceValue;
+		if (SUCCEEDED(m_CommandQueue->Signal(m_Fence.Get(), idleFence)) &&
+			m_Fence->GetCompletedValue() < idleFence)
 		{
-			Log::Error("[Renderer] Failed to rebuild DX12 objects after ResizeBuffers");
-			s_Dx12Ready = false;
+			m_Fence->SetEventOnCompletion(idleFence, m_FenceEvent);
+			WaitForSingleObject(m_FenceEvent, INFINITE);
 		}
 	}
+
+	ImGui_ImplDX12_Shutdown();
+	ReleaseDx12Objects();
+	s_Dx12Ready = false;
+
+	// Resize first, then rebuild lazily on the next real Present. Reinitializing
+	// the DX12 backend from inside ResizeBuffers is unsafe with AW2's hotsampling
+	// path (multiple resizes / Streamline / upscaler resources can still be in flight).
+	HRESULT result = oIDXGISwapChain_ResizeBuffers(pSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
+
+	if (m_SwapChain)
+	{
+		m_SwapChain->Release();
+		m_SwapChain = nullptr;
+	}
+
+	if (FAILED(result))
+		Log::Error("[Renderer] ResizeBuffers failed 0x%08X", (unsigned int)result);
+	else
+		Log::Write("[Renderer] Resize complete; DX12 overlay rebuild deferred to next Present");
 
 	return result;
 }
