@@ -13,6 +13,9 @@ import UI;
 #include <Windows.h>
 #include <wrl.h>
 
+#pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "d3d12.lib")
+
 using namespace Microsoft::WRL;
 
 typedef HRESULT(WINAPI* tIDXGISwapChain_Present)(IDXGISwapChain*, UINT, UINT);
