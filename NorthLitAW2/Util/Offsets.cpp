@@ -137,8 +137,8 @@ bool Offsets::ScanOffsets()
 	s_Signatures[Offset::DialogueAnimationUpdate] = Signature("48 8B C4 53 56 57 41 54 41 55 41 56 41 57 48 81 EC C0 01 00 00");
 	s_Signatures[Offset::DirectCommandQueue] = Signature("48 8B 05 [ ?? ?? ?? ?? ] 48 8B 48 10 48 8B 01 FF 90");
 	s_Signatures[Offset::EcsTypeInfo] = Signature("48 8D 4C 24 60 E8 ?? ?? ?? ?? 48 8B 35 [ ?? ?? ?? ?? ] 48 85 F6");
-	s_Signatures[Offset::FindGidInMap] = Signature("E8 [ ?? ?? ?? ?? ] 48 8B 44 24 40 41 B9 FF FF 00 00");
-	s_Signatures[Offset::GameServerWorld] = Signature("4C 89 3D [ ?? ?? ?? ?? ] 4C 89 3D ?? ?? ?? ?? 4C 89 7C 24 68");
+	s_Signatures[Offset::FindGidInMap] = Signature("E8 [ ?? ?? ?? ?? ] 48 8B 44 24 20 41 B9 FF FF 00 00");
+	s_Signatures[Offset::GameServerWorld] = Signature("48 8B 05 [ ?? ?? ?? ?? ] 48 8B 40 08 48 8B 80 E0 80 05 00");
 	s_Signatures[Offset::GameWindow] = Signature("4C 8B 35 [ ?? ?? ?? ?? ] FF 15");
 	s_Signatures[Offset::GetDestroyHandle] = Signature("48 89 5C 24 10 48 89 74 24 18 57 48 83 EC 20 65");
 	s_Signatures[Offset::GetTypeInfo] = Signature("40 53 55 56 57 41 54 41 55 41 56 41 57 48 81 EC D8");
@@ -150,7 +150,7 @@ bool Offsets::ScanOffsets()
 	s_Signatures[Offset::PuppetUpdate] = Signature("48 8B C4 48 89 70 20 41 56");
 	s_Signatures[Offset::ResourceManager] = Signature("48 8B 0D [ ?? ?? ?? ?? ] E8 ?? ?? ?? ?? 48 8B D8 48 85 C0 74 09");
 	s_Signatures[Offset::RegisterId] = Signature("E8 [ ?? ?? ?? ?? ] 48 83 C3 10 48 3B DE 74 27");
-	s_Signatures[Offset::RendererInterface] = Signature("48 8D 0D [ ?? ?? ?? ?? ] 0F 85 90 FD FF FF");
+	s_Signatures[Offset::RendererInterface] = Signature("48 8D 0D [ ?? ?? ?? ?? ] 0F 85 9B FD FF FF");
 	s_Signatures[Offset::SpawnArchetype] = Signature("48 89 5C 24 08 55 56 57 48 8D 6C 24 B9 48 81 EC 00");
 
 	__int64 codeSegment = 0;
