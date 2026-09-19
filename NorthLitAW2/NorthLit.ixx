@@ -36,6 +36,8 @@ namespace NorthLit
 
 	static bool s_CameraEnabled = false;
 	static XMFLOAT4X4A s_CameraMatrix{};
+	static XMFLOAT4X4A s_LastGameCameraMatrix{};
+	static bool s_HasLastGameCameraMatrix = false;
 	static float s_CameraFov = 60.0f;
 	static float s_LastGameFovRadians = XMConvertToRadians(60.0f);
 	static float s_MovementSpeed = 0.01f;
@@ -81,8 +83,17 @@ namespace NorthLit
 		if (enabled == s_CameraEnabled) return;
 		if (enabled)
 		{
-			XMFLOAT4X4A* pCameraTransform = (XMFLOAT4X4A*)GetOffset(Offset::CameraTransform);
-			if (pCameraTransform) s_CameraMatrix = *pCameraTransform;
+			// Initialize from the exact matrix consumed by CameraUpdate.
+			// This is more robust across AW2 updates than reading a separate global CameraTransform.
+			if (s_HasLastGameCameraMatrix)
+			{
+				s_CameraMatrix = s_LastGameCameraMatrix;
+			}
+			else
+			{
+				XMFLOAT4X4A* pCameraTransform = (XMFLOAT4X4A*)GetOffset(Offset::CameraTransform);
+				if (pCameraTransform) s_CameraMatrix = *pCameraTransform;
+			}
 			if (s_LastGameFovRadians > 0.0f) s_CameraFov = XMConvertToDegrees(s_LastGameFovRadians);
 			Log::Write("[Camera] Enabled - FOV %.3f", s_CameraFov);
 		}
@@ -114,7 +125,27 @@ namespace NorthLit
 		if (pCameraVals)
 		{
 			if (!s_CameraEnabled)
+			{
+				// Cache the live camera in exactly the same layout that we overwrite below.
+				s_LastGameCameraMatrix.m[0][0] = pCameraVals[0];
+				s_LastGameCameraMatrix.m[0][1] = pCameraVals[1];
+				s_LastGameCameraMatrix.m[0][2] = pCameraVals[2];
+				s_LastGameCameraMatrix.m[0][3] = 0.0f;
+				s_LastGameCameraMatrix.m[1][0] = pCameraVals[3];
+				s_LastGameCameraMatrix.m[1][1] = pCameraVals[4];
+				s_LastGameCameraMatrix.m[1][2] = pCameraVals[5];
+				s_LastGameCameraMatrix.m[1][3] = 0.0f;
+				s_LastGameCameraMatrix.m[2][0] = pCameraVals[6];
+				s_LastGameCameraMatrix.m[2][1] = pCameraVals[7];
+				s_LastGameCameraMatrix.m[2][2] = pCameraVals[8];
+				s_LastGameCameraMatrix.m[2][3] = 0.0f;
+				s_LastGameCameraMatrix.m[3][0] = pCameraVals[9];
+				s_LastGameCameraMatrix.m[3][1] = pCameraVals[10];
+				s_LastGameCameraMatrix.m[3][2] = pCameraVals[11];
+				s_LastGameCameraMatrix.m[3][3] = 1.0f;
 				s_LastGameFovRadians = pCameraVals[12];
+				s_HasLastGameCameraMatrix = true;
+			}
 			else
 			{
 				pCameraVals[0] = s_CameraMatrix.m[0][0];
