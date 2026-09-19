@@ -552,15 +552,12 @@ namespace NorthLit
 		CreateHook(pCameraUpdateFunc, hCameraUpdate, &oCameraUpdate);
 		Log::Write("[Init] Camera hook OK");
 
-		Log::Write("[Init] Hotsample hook begin");
-		void* pResolutionChange = (void*)GetOffset(Offset::HotsampleFix);
-		if (!pResolutionChange)
-		{
-			Log::Error("[Init] HotsampleFix offset unavailable");
-			return false;
-		}
-		CreateHook(pResolutionChange, hResolutionChange, &oResolutionChange);
-		Log::Write("[Init] Hotsample hook OK");
+		// September 2026 AW2 update: the remapped HotsampleFix signature has not yet
+		// been semantically validated. Hooking the wrong internal resolution routine
+		// can produce a GPU device fault only when a resize occurs. Leave the engine
+		// resolution path untouched for now; the DXGI ResizeBuffers hook still rebuilds
+		// the ImGui backend around native/external hotsampling.
+		Log::Warning("[Compatibility] Internal HotsampleFix hook disabled for validation");
 
 		Log::Write("[Init] IGCS connector begin");
 		TryConnectIgcsConnector();
